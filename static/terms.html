@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تِــريَــاق — شروط الاستخدام والترخيص المستقل</title>
+<link rel="icon" href="img/favicon.ico" type="image/x-icon">
+<link rel="stylesheet" href="css/app.css?v=2.3">
+<style>
+  :root {
+    --pg-bg: #FAF8F5;
+    --pg-card: rgba(255,254,252,0.97);
+    --pg-text: #0F0F0E;
+    --pg-muted: #68645E;
+    --pg-border: rgba(20,20,19,0.09);
+    --pg-accent: #f2572c;
+    --pg-accent-bg: rgba(242,87,44,0.07);
+    --pg-top: #000000;
+  }
+
+  body { min-height:100vh; margin:0; background:var(--pg-bg); color:var(--pg-text); font-family:inherit; }
+
+  /* ── Top bar ── */
+  .top-bar {
+    background:var(--pg-top); height:38px; width:100%;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 24px; box-sizing:border-box; position:sticky; top:0; z-index:100;
+  }
+  .top-bar a {
+    color:rgba(255,255,255,0.65); text-decoration:none; font-size:12.5px;
+    font-weight:500; display:flex; align-items:center; gap:6px; transition:color .18s;
+  }
+  .top-bar a:hover { color:#fff; }
+  .top-bar a svg { width:14px; height:14px; }
+  .top-bar .privacy-link { font-size:12px; color:rgba(255,255,255,0.45); }
+  .top-bar .privacy-link:hover { color:rgba(255,255,255,0.8); }
+
+  /* ── Layout ── */
+  .pg-layout { display:grid; grid-template-columns:230px 1fr; gap:32px; max-width:1060px; margin:0 auto; padding:40px 24px 80px; box-sizing:border-box; }
+  @media(max-width:820px){ .pg-layout{display:block;} .toc{display:none;} }
+
+  .toc {
+    position:sticky; top:56px; align-self:start; max-height:calc(100vh - 72px);
+    overflow-y:auto; padding-left:4px;
+  }
+  .toc-title { font-size:11px; font-weight:700; color:var(--pg-muted); text-transform:uppercase; letter-spacing:.8px; margin:0 0 10px; }
+  .toc ol { list-style:none; margin:0; padding:0; }
+  .toc ol li { margin-bottom:4px; }
+  .toc ol li a {
+    font-size:12.5px; color:var(--pg-muted); text-decoration:none;
+    display:block; padding:5px 10px; border-radius:8px; transition:all .18s; line-height:1.5;
+  }
+  .toc ol li a:hover, .toc ol li a.active {
+    color:var(--pg-accent); background:var(--pg-accent-bg); font-weight:600;
+  }
+
+  /* ── Page Header ── */
+  .pg-header { text-align:center; margin-bottom:36px; }
+  .pg-header .logo-wrap {
+    width:60px; height:60px; border-radius:15px;
+    background:radial-gradient(circle at 50% 35%,#fff 0%,#F7F3EE 100%);
+    border:1px solid rgba(242,87,44,.14);
+    display:inline-flex; align-items:center; justify-content:center;
+    box-shadow:0 8px 20px -4px rgba(242,87,44,.16),0 2px 6px rgba(0,0,0,.05);
+    padding:7px; margin-bottom:12px;
+  }
+  .pg-header .logo-wrap img { width:100%; height:100%; object-fit:contain; }
+  .pg-header h1 { margin:0 0 5px; font-size:24px; font-weight:800; letter-spacing:-.3px; }
+  .pg-header .subtitle { color:var(--pg-muted); font-size:13px; margin:0 0 10px; }
+  .badges { display:flex; align-items:center; justify-content:center; gap:8px; flex-wrap:wrap; }
+  .badge {
+    display:inline-flex; align-items:center; gap:5px;
+    border-radius:20px; padding:4px 12px; font-size:11.5px; font-weight:600;
+  }
+  .badge.red { background:var(--pg-accent-bg); border:1px solid rgba(242,87,44,.18); color:var(--pg-accent); }
+  .badge.gray { background:rgba(20,20,19,.05); border:1px solid rgba(20,20,19,.1); color:var(--pg-muted); }
+  .badge svg { width:12px; height:12px; }
+
+  /* ── Divider ── */
+  .pg-divider { height:1px; background:var(--pg-border); margin:28px 0; }
+
+  /* ── Ownership Model Banner ── */
+  .model-banner {
+    background:#FFFBF5; border:1px solid rgba(242,87,44,.2); border-radius:16px;
+    padding:20px; margin-bottom:24px; display:grid; grid-template-columns:1fr 1fr; gap:16px;
+  }
+  @media(max-width:640px){ .model-banner{grid-template-columns:1fr;} }
+  .model-card {
+    background:#FFFFFF; border:1px solid rgba(20,20,19,.06); border-radius:12px;
+    padding:16px; box-shadow:0 1px 4px rgba(0,0,0,.03);
+  }
+  .model-badge {
+    font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px;
+    display:inline-block; padding:2px 8px; border-radius:6px; margin-bottom:8px;
+  }
+  .model-badge.owner { background:#DCFCE7; color:#166534; }
+  .model-badge.dev { background:#FEE2E2; color:#991B1B; }
+  .model-title { font-size:14px; font-weight:700; color:var(--pg-text); margin-bottom:4px; }
+  .model-desc { font-size:12.5px; color:var(--pg-muted); line-height:1.6; margin:0; }
+
+  /* ── Section card ── */
+  .section-card {
+    background:var(--pg-card); border:1px solid var(--pg-border); border-radius:18px;
+    padding:26px 28px; margin-bottom:18px;
+    box-shadow:0 2px 10px rgba(20,15,10,.04);
+    scroll-margin-top:60px;
+  }
+  .section-card h2 {
+    margin:0 0 14px; font-size:15.5px; font-weight:700; color:var(--pg-text);
+    display:flex; align-items:center; gap:10px;
+  }
+  .icon-badge {
+    width:30px; height:30px; border-radius:9px; background:var(--pg-accent-bg);
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .icon-badge svg { width:15px; height:15px; stroke:var(--pg-accent); }
+  .section-card p, .section-card li {
+    color:var(--pg-muted); font-size:13.5px; line-height:1.78; margin:0;
+  }
+  .section-card p + p { margin-top:9px; }
+  .section-card ul { margin:10px 0 0; padding-right:20px; }
+  .section-card ul li { margin-bottom:7px; }
+  .section-card ul li:last-child { margin-bottom:0; }
+  .section-card strong { color:var(--pg-text); font-weight:700; }
+
+  /* ── Callout boxes ── */
+  .callout { border-radius:12px; padding:14px 18px; margin-top:14px; }
+  .callout.warn { background:rgba(242,87,44,.06); border:1px solid rgba(242,87,44,.18); }
+  .callout.warn p { color:#8B2500 !important; font-weight:600; }
+  .callout.info { background:rgba(37,99,235,.06); border:1px solid rgba(37,99,235,.16); }
+  .callout.info p { color:#1E3A8A !important; }
+  .callout.ok { background:rgba(21,128,61,.06); border:1px solid rgba(21,128,61,.18); }
+  .callout.ok p { color:#14532D !important; font-weight:600; }
+
+  /* ── Table ── */
+  .data-table { width:100%; border-collapse:collapse; margin-top:14px; font-size:13px; }
+  .data-table th {
+    background:var(--pg-accent-bg); color:#8B2500; font-weight:700;
+    padding:9px 13px; text-align:right; border:1px solid rgba(242,87,44,.12);
+  }
+  .data-table td {
+    padding:8px 13px; border:1px solid var(--pg-border);
+    color:var(--pg-muted); vertical-align:top; line-height:1.6;
+  }
+  .data-table tr:nth-child(even) td { background:rgba(0,0,0,.013); }
+
+  /* ── Footer ── */
+  .pg-footer {
+    text-align:center; margin-top:48px; padding-top:22px;
+    border-top:1px solid var(--pg-border);
+  }
+  .pg-footer p { color:var(--pg-muted); font-size:13px; margin:0 0 10px; }
+  .pg-footer .footer-links { display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap; }
+  .pg-footer a {
+    display:inline-block; color:var(--pg-accent); font-size:13px; font-weight:600;
+    text-decoration:none; padding:7px 18px; border:1px solid rgba(242,87,44,.22);
+    border-radius:10px; transition:all .18s;
+  }
+  .pg-footer a:hover { background:var(--pg-accent); color:#fff; border-color:var(--pg-accent); }
+
+  @media(max-width:600px){
+    .pg-layout{padding:28px 14px 60px;}
+    .section-card{padding:18px 16px;}
+    .pg-header h1{font-size:21px;}
+  }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <a href="login.html">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    العودة إلى تسجيل الدخول
+  </a>
+  <a href="privacy.html" class="privacy-link">سياسة الخصوصية واستقلالية البيانات →</a>
+</div>
+
+<div class="pg-layout">
+
+  <!-- TOC -->
+  <nav class="toc" aria-label="فهرس شروط الاستخدام">
+    <p class="toc-title">أقسام الترخيص</p>
+    <ol>
+      <li><a href="#t1">١. نموذج التثبيت والملكية</a></li>
+      <li><a href="#t2">٢. ترخيص البرنامج وحقوق الملكية</a></li>
+      <li><a href="#t3">٣. البنية السحابية وإدارة الحسابات</a></li>
+      <li><a href="#t4">٤. مسؤوليات صاحب الصيدلية</a></li>
+      <li><a href="#t5">٥. إدارة المستخدمين والموظفين</a></li>
+      <li><a href="#t6">٦. وضع عدم الاتصال (Offline Mode)</a></li>
+      <li><a href="#t7">٧. النسخ الاحتياطي واستعادة البيانات</a></li>
+      <li><a href="#t8">٨. التحديثات والدعم الفني</a></li>
+      <li><a href="#t9">٩. إخلاء وتحديد المسؤولية</a></li>
+      <li><a href="#t10">١٠. الامتثال التنظيمي والصيدلاني</a></li>
+      <li><a href="#t11">١١. سريان الاتفاقية والنزاعات</a></li>
+    </ol>
+  </nav>
+
+  <!-- Main content -->
+  <main>
+
+    <!-- Header -->
+    <div class="pg-header">
+      <div class="logo-wrap"><img src="img/logo.png" alt="ترياق"></div>
+      <h1>شروط الاستخدام والترخيص المستقل</h1>
+      <p class="subtitle">وثيقة الترخيص والتشغيل المباشر — نظام تِــريَــاق لإدارة الصيدلية</p>
+      <div class="badges">
+        <span class="badge red">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          نسخة مستقلة (Dedicated Instance)
+        </span>
+        <span class="badge gray">سيرفر وقاعدة بيانات بملكية الصيدلية الكاملة</span>
+        <span class="badge gray">بدون اشتراكات شهرية متكررة</span>
+      </div>
+    </div>
+
+    <div class="pg-divider"></div>
+
+    <!-- Ownership Banner -->
+    <div class="model-banner">
+      <div class="model-card">
+        <span class="model-badge owner">مالك النظام والبنية التحتية</span>
+        <div class="model-title">صاحب الصيدلية (المالك والمدير)</div>
+        <p class="model-desc">
+          يمتلك حساب Render (استضافة السيرفر) وحساب Supabase (قاعدة البيانات السحابية). البيانات بالكامل تحت إدارته ولا يملك أي طرف خارجي مفاتيح الوصول إليها أو إمكانية إيقافها.
+        </p>
+      </div>
+      <div class="model-card">
+        <span class="model-badge dev">المطور / مزود الحل البرمجي</span>
+        <div class="model-title">فريق تِــريَــاق (مرخّص البرنامج)</div>
+        <p class="model-desc">
+          الجهة المطورة للكود والحلول التقنية. يقتصر دور المطور على تسليم النسخة، التهيئة الأولية، وتوفير التحديثات وحزم الدعم التقني حسب الاتفاق المبرم.
+        </p>
+      </div>
+    </div>
+
+    <!-- T1 -->
+    <div class="section-card" id="t1">
+      <h2><span class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span>١. نموذج التثبيت والملكية (Dedicated Deployment Model)</h2>
+      <p>
+        يعمل نظام <strong>تِــريَــاق</strong> بنظام <strong>النسخة الخاصة المستقلة (Dedicated Instance)</strong>، حيث يحصل كل صاحب صيدلية على نسخته المعزولة والكاملة من النظام.
+      </p>
+      <ul>
+        <li><strong>لا توجد مشاركة أو خوادم وسيطة:</strong> لا ترتبط نسختك بأي صيدلية أخرى أو سيرفر وسيط تابع للمطور.</li>
+        <li><strong>انعدام الاشتراكات المتكررة للبرنامج:</strong> شراء النظام يتم بترخيص دائم لاستخدام تلك النسخة على بيئتك الخاصة دون دفع اشتراكات شهرية لاستخدام كود النظام.</li>
+        <li><strong>الملكية المطلقة للموارد:</strong> تنشر الصيدلية تطبيقها على خوادم وموارد خاصة بها ومسجلة باسمها مباشرة.</li>
+      </ul>
+    </div>
+
+    <!-- T2 -->
+    <div class="section-card" id="t2">
+      <h2><span class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>٢. نطاق ترخيص البرنامج وحقوق الملكية الفكرية</h2>
+      <p>
+        يمنح المطور صاحب الصيدلية ترخيصاً غير حصري لاستخدام وتشغيل نظام "تِــريَــاق" لإدارة الصيدلية وفروعها المشمولة بالاتفاقية.
+      </p>
+      <ul>
+        <li><strong>ملكية الكود والتصميم:</strong> تظل حقوق الملكية الفكرية والشفرة المصدرية (Source Code) والواجهات ملكاً لمطوري تِــريَــاق.</li>
+        <li><strong>حظر إعادة البيع والتوزيع:</strong> لا يحق للمشتري إعادة بيع النظام أو تأجيره لجهات ثالثة أو توزيعه تجارياً كخدمة برمجية.</li>
+        <li><strong>ملكية البيانات:</strong> كافة البيانات، الجداول، العمليات المحاسبية وسجلات المرضى والمبيعات هي ملكية حصرية للصيدلية ١٠٠٪.</li>
+      </ul>
+    </div>
+
+    <!-- T3 -->
+    <div class="section-card" id="t3">
+      <h2><span class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg></span>٣. البنية السحابية وإدارة الحسابات (Render &amp; Supabase)</h2>
+      <p>
+        لتشغيل نسختك المستقلة، يتم الاعتماد على حسابات مباشرة لدى مزودي البنية التحتية، يديرها صاحب الصيدلية بنفسه:
+      </p>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>المنصة</th>
+            <th>الخدمة</th>
+            <th>المسؤولية الإدارية والمالية</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Render (أو خادم الويب)</strong></td>
+            <td>استضافة وتشغيل تطبيق Flask، إدارة الـ SSL وعناوين النطاق (Domain)</td>
+            <td>صاحب الصيدلية مسؤول عن إنشاء الحساب وإدخال بطاقة الدفع (إن وُجدت باقة مدفوعة) وتجديد استضافته.</td>
+          </tr>
+          <tr>
+            <td><strong>Supabase (قاعدة البيانات)</strong></td>
+            <td>قاعدة بيانات PostgreSQL السحابية، إدارة الاتصالات وسجلات البيانات السحابية</td>
+            <td>صاحب الصيدلية هو المالك الوحيد لمشروع Supabase ولديه الصلاحيات الإدارية والمفاتيح (API Keys / DB Password).</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout ok">
+        <p>✅ ميزة هذا النموذج: لن يتمكن المطور من قطع الخدمة عنك لأي خلاف مستقبلي، لأنك المالك المباشر للسيرفر وقاعدة البيانات.</p>
+      </div>
+    </div>
+
+    <!-- T4 -->
+    <div class="section-card" id="t4">
+      <h2><span class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>٤. مسؤوليات صاحب الصيدلية (المالك والمشغّل)</h2>
+      <p>كون الصيدلية هي المالك الحصري لبيئتها السحابية، يترتب عليها الالتزام بالآتي:</p>
+      <ul>
+        <li><strong>حماية مفاتيح الحسابات:</strong> الحفاظ على سرية بيانات حسابات Render و Supabase وعدم تسريب مفاتيح الاتصال (Database URL / Service Role Keys).</li>
+        <li><strong>سداد رسوم الاستضافة المباشرة:</strong> دفع أي تكاليف تشغيلية تفرضها شركات الاستضافة السحابية عند استهلاك خطط مدفوعة أو تخطي حدود الخطط المجانية.</li>
+        <li><strong>صحة العمليات والمدخلات:</strong> دقة تسعير الأدوية والمنتجات والكميات المضافة ومراقبة فواتير المبيعات ونسب الخصم.</li>
+        <li><strong>التوافق مع القوانين المحلية:</strong> التأكد من أن حفظ بيانات المرضى والعملاء يتوافق مع الأنظمة الصحية وحماية البيانات في بلدك.</li>
+      </ul>
+    </div>
+
+    <!-- T5 -->
+    <div class="section-card" id="t5">
+      <h2><span class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>٥. إدارة المستخدمين وتوزيع الصلاحيات</h2>
+      <p>
+        يوفر النظام لوحة تحكم متكاملة تسمح للمالك بإنشاء وإدارة حسابات طاقم العمل وتوزيع الصلاحيات:
+      </p>
+      <ul>
+        <li><strong>مدير (Admin):</strong> يملك كافة الصلاحيات على النظام والتقارير المالية والنسخ الاحتياطي وحذف وإضافة المستخدمين.</li>
+        <li><strong>صيدلي (Pharmacist):</strong> إدارة الأدوية والمخزون، نقاط البيع، المشتريات، وصرف الروشتات وتعديل الكميات.</li>
+        <li><strong>بائع (Sales):</strong> مخصص لعمليات البيع اليومية والفواتير والورديات فقط مع تقييد الوصول للبيانات الحساسة.</li>
+      </ul>
+      <div class="callout warn">
+        <p>⚠️ إدارة الصيدلية مسؤولة مسؤولية كاملة عن أي إجراء يُتخذ من خلال الحسابات التي تنشئها، وعن تغيير كلمات المرور وتجميد حسابات الموظفين المنتهية خدمتهم فوراً.</p>
+      </div>
+    </div>
+
+    <!-- T6 -->
+    <div class="section-card" id="t6">
+      <h2><span class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>٦. وضع عدم الاتصال والمزامنة (Offline Fallback &amp; SQLite)</h2>
+      <p>
+        تم تزويد نظام "تِــريَــاق" بآلية متطورة تتيح استمرار عمل الصيدلية بدون توقف في حال انقطاع اتصال الإنترنت:
+      </p>
+      <ul>
+        <li><strong>التحويل التلقائي لقاعدة البيانات المحلية:</strong> عند فشل الاتصال بقاعدة بيانات Supabase، يتحول النظام داخلياً للعمل على قاعدة بيانات <code>SQLite</code> محلية على جهاز الصيدلية.</li>
+        <li><strong>استمرار البيع والعمليات:</strong> تستمر عمليات البيع اليومية وطباعة الفواتير دون انقطاع.</li>
+        <li><strong>مسؤولية مزامنة البيانات:</strong> على إدارة الصيدلية التأكد من إعادة الاتصال بالإنترنت لمزامنة البيانات المحلية مع سحابة Supabase ومراجعة حالة المزامنة عبر النظام.</li>
+      </ul>
+    </div>
+
+    <!-- T7 -->
+    <div class="section-card" id="t7">
+      <h2><span class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2z"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>٧. النسخ الاحتياطي واستعادة البيانات</h2>
+      <p>
+        نظراً لأن بيئة السحاب تخص الصيدلية مباشرة، فإن استراتيجية النسخ الاحتياطي تعتمد على أمان متضاعف:
+      </p>
+      <ul>
+        <li><strong>النسخ السحابي التلقائي:</strong> توفر منصة Supabase خيارات النسخ الاحتياطي اليومي للـ PostgreSQL Database.</li>
+        <li><strong>النسخ اليدوي والمحلي:</strong> يتيح نظام تِريَاق من شاشة الإدارة تنزيل نسخة احتياطية محلية بصيغة SQL / SQLite في أي وقت وحفظها على وسائط تخزين خارجية.</li>
+        <li><strong>المسؤولية:</strong> تقع مسؤولية الاحتفاظ بنسخ احتياطية دورية خارج السيرفر السحابي على عاتق مالك الصيدلية لحمايتها من أي خطأ بشري أو فقدان للحسابات.</li>
+      </ul>
+    </div>
+
+    <!-- T8 -->
+    <div class="section-card" id="t8">
+      <h2><span class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg></span>٨. التحديثات والدعم الفني</h2>
+      <ul>
+        <li><strong>تحديثات النظام البرمجية:</strong> تسليم التحديثات والتحسينات البرمجية يتم وفق اتفاقية الدعم المبرمة بين المطور والصيدلية، ويتم رفع التحديثات إلى مستودع أو بيئة الصيدلية دون المساس بقاعدة البيانات السحابية.</li>
+        <li><strong>حدود الدعم التقني:</strong> يشمل الدعم إصلاح الأخطاء البرمجية (Bugs) في كود تِريَاق، ولا يشمل المشاكل الناتجة عن انقطاع خدمات شركات الاتصال المحلية أو مشاكل مزودي الاستضافة الخارجية (Render / Supabase).</li>
+      </ul>
+    </div>
+
+    <!-- T9 -->
+    <div class="section-card" id="t9">
+      <h2><span class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></span>٩. إخلاء وتحديد المسؤولية</h2>
+      <ul>
+        <li><strong>القرارات الصيدلانية والطبية:</strong> نظام تِــريَــاق هو برنامج إداري ومحاسبي بحت لتنظيم حركة الصيدلية والمخازن، وليس بديلاً عن المعرفة الطبية أو المرجع الصيدلاني، وتقع مسؤولية الجرعات وصلاحيات الأدوية وتداخلاتها على عاتق الصيدلي المرخص.</li>
+        <li><strong>أعطال خدمات الطرف الثالث:</strong> لا يتحمل مطور البرنامج أي مسؤولية عن توقف مؤقت أو مشاكل أمنية ناجمة عن خوادم Render أو Supabase أو مزود خدمة الإنترنت الخاص بالصيدلية.</li>
+        <li><strong>الحد الأقصى للمسؤولية:</strong> في حال ثبوت أي خطأ برمجي أدى لخلل في النظام، ينحصر التزام المطور في معالجة الخطأ البرمجي وإعادة الاستقرار للنظام.</li>
+      </ul>
+    </div>
+
+    <!-- T10 -->
+    <div class="section-card" id="t10">
+      <h2><span class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></span>١٠. الامتثال التنظيمي والصيدلاني والضريبي</h2>
+      <p>
+        تتعهد الصيدلية باستخدام النظام وفق الأنظمة والقوانين المعمول بها في دولتها:
+      </p>
+      <ul>
+        <li>إصدار الفواتير الضريبية والالتزام بنسب الضريبة المقررة طبقاً للقانون المحلي.</li>
+        <li>حفظ السجلات المالية والصيدلانية للمدد التي تحددها وزارات الصحة وهيئات الدواء والضرائب.</li>
+        <li>الامتناع التام عن استخدام النظام في إدارة أو تدوين أي مواد محظورة أو غير مصرح بتداولها.</li>
+      </ul>
+    </div>
+
+    <!-- T11 -->
+    <div class="section-card" id="t11">
+      <h2><span class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span>١١. سريان الاتفاقية والقانون المطبق</h2>
+      <p>
+        يُعد تشغيل النظام واستخدامه إقراراً من إدارة الصيدلية بقبول شروط هذه الاتفاقية وسياسة الخصوصية المرتبطة بها. تخضع هذه الوثيقة وتفسر وفقاً للقوانين والأنظمة المعمول بها في مقر الصيدلية الرئيسي ما لم يتفق الطرفان على غير ذلك في عقد الشراء المباشر.
+      </p>
+    </div>
+
+    <!-- Footer -->
+    <div class="pg-footer">
+      <p>للاطلاع على التزامات الأمان وسياسة البيانات وحقوق الخصوصية</p>
+      <div class="footer-links">
+        <a href="privacy.html">سياسة الخصوصية واستقلالية البيانات</a>
+        <a href="login.html">العودة إلى تسجيل الدخول</a>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+  // Active TOC link on scroll
+  const sections = document.querySelectorAll('.section-card[id]');
+  const tocLinks = document.querySelectorAll('.toc a');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        tocLinks.forEach(l => l.classList.remove('active'));
+        const link = document.querySelector(`.toc a[href="#${entry.target.id}"]`);
+        if (link) link.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+  sections.forEach(s => observer.observe(s));
+</script>
+</body>
+</html>

@@ -1,0 +1,275 @@
+﻿<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="light">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تِــريَــاق — طلبات المنتجات</title>
+<link rel="stylesheet" href="css/app.css?v=2.3">
+<link rel="stylesheet" href="css/responsive.css">
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<link rel="apple-touch-icon" href="img/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ترياق">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#f2572c">
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="js/app.js?v=2.2"></script>
+<script>
+boot("طلبات المنتجات", async (user, el) => {
+  if (user.role !== "admin" && user.role !== "pharmacist") {
+    el.innerHTML = '<div class="empty">عذراً، هذه الصفحة للمديرين والصيادلة فقط</div>';
+    return;
+  }
+
+  const isAdmin = user.role === "admin";
+  let branches = [];
+  if (isAdmin) {
+    try { branches = (await api("/api/branches")).branches || []; } catch (e) {}
+  }
+
+  el.innerHTML = `
+    <div class="cards" id="req-kpis" style="margin-bottom:16px;">
+      <div class="card kpi">
+        <span class="ico blue">${icon("box")}</span>
+        <div><small>إجمالي الطلبات</small><b id="kpi-total">0</b></div>
+      </div>
+      <div class="card kpi">
+        <span class="ico amber">${icon("clock")}</span>
+        <div><small>قيد الانتظار</small><b id="kpi-pending">0</b></div>
+      </div>
+      <div class="card kpi">
+        <span class="ico blue">${icon("truck")}</span>
+        <div><small>تم الطلب من المورد</small><b id="kpi-ordered">0</b></div>
+      </div>
+      <div class="card kpi">
+        <span class="ico green">${icon("check")}</span>
+        <div><small>تم التوريد للعميل</small><b id="kpi-fulfilled">0</b></div>
+      </div>
+    </div>
+
+    <div class="toolbar" style="margin-bottom:14px; gap:10px; flex-wrap:wrap;">
+      <div class="search" style="flex:1; min-width:220px;">
+        ${icon("search")}
+        <input type="text" id="req-search" placeholder="ابحث باسم المنتج، العميل، الهاتف...">
+      </div>
+      <div class="field" style="width:160px; margin:0;">
+        <select id="filter-status" onchange="loadRequests()">
+          <option value="">كل الحالات</option>
+          <option value="pending">قيد الانتظار</option>
+          <option value="ordered">تم الطلب</option>
+          <option value="fulfilled">تم التوريد</option>
+          <option value="cancelled">ملغي</option>
+        </select>
+      </div>
+      ${isAdmin && branches.length > 1 ? `
+        <div class="field" style="width:160px; margin:0;">
+          <select id="filter-branch" onchange="loadRequests()">
+            <option value="">كل الفروع</option>
+            ${branches.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join("")}
+          </select>
+        </div>
+      ` : ""}
+      <button class="btn primary" onclick="openAddRequestModal()">${icon("plus")}<span>تسجيل طلب جديد</span></button>
+      <button class="btn" onclick="loadRequests()">${icon("refresh")}<span>تحديث</span></button>
+    </div>
+
+    <div class="card" id="requests-container"></div>
+  `;
+
+  let searchTimer = null;
+  $("#req-search").oninput = () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => loadRequests(), 250);
+  };
+
+  const statusLabels = {
+    pending: "قيد الانتظار",
+    ordered: "تم الطلب",
+    fulfilled: "تم التوريد",
+    cancelled: "ملغي"
+  };
+
+  const statusPills = {
+    pending: '<span class="pill warn">قيد الانتظار</span>',
+    ordered: '<span class="pill info">تم الطلب</span>',
+    fulfilled: '<span class="pill ok">تم التوريد</span>',
+    cancelled: '<span class="pill danger">ملغي</span>'
+  };
+
+  window.loadRequests = async () => {
+    $("#requests-container").innerHTML = tableSkeletonHTML(8, 6);
+    const status = $("#filter-status") ? $("#filter-status").value : "";
+    const search = $("#req-search") ? $("#req-search").value.trim() : "";
+    const branch = $("#filter-branch") ? $("#filter-branch").value : "";
+
+    const params = new URLSearchParams();
+    if (status) params.append("status", status);
+    if (search) params.append("search", search);
+    if (branch) params.append("branch_id", branch);
+
+    try {
+      const data = await api(`/api/product-requests?${params.toString()}`);
+      let rs = data.requests || [];
+      if (branch) {
+        rs = rs.filter(r => String(r.branch_id) === String(branch));
+      }
+
+      // Update KPI counters
+      updateKPIs(rs);
+
+      if (rs.length === 0) {
+        $("#requests-container").innerHTML = `
+          <div class="empty" style="padding:40px 20px; text-align:center;">
+            <div style="width:48px; height:48px; margin:0 auto 12px; border-radius:50%; background:var(--surface-sunken, #f1f5f9); display:grid; place-items:center; color:var(--muted);">
+              ${icon("box")}
+            </div>
+            <div style="font-size:15px; font-weight:600; margin-bottom:4px;">لا توجد طلبات منتجات مسجلة</div>
+            <div style="font-size:13px; color:var(--muted);">يمكنك تسجيل طلب دواء أو صنف غير متوفر للعميل باستخدام زر "تسجيل طلب جديد"</div>
+          </div>
+        `;
+        return;
+      }
+
+      $("#requests-container").innerHTML = `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="min-width:180px">اسم المنتج / الدواء</th>
+                <th>العميل</th>
+                <th>رقم الهاتف</th>
+                <th>ملاحظات الطلب</th>
+                <th>الفرع</th>
+                <th>الموظف</th>
+                <th>تاريخ الطلب</th>
+                <th style="text-align:center">الحالة</th>
+                <th style="text-align:center; min-width:160px">تحديث الحالة / إجراءات</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rs.map(r => `
+                <tr>
+                  <td>
+                    <div style="font-weight:600; color:var(--text); font-size:13.5px;">${esc(r.product_name)}</div>
+                    <small style="color:var(--muted); font-size:11.5px;">طلب رقم #${r.id}</small>
+                  </td>
+                  <td>${esc(r.customer_name || "عميل عابر")}</td>
+                  <td>
+                    ${r.customer_phone ? `
+                      <div style="display:inline-flex; align-items:center; gap:6px;">
+                        <span dir="ltr" style="font-family:'Flamor-Soft', Tahoma, sans-serif; font-weight:600; font-size:12.5px;">${esc(r.customer_phone)}</span>
+                        <a href="tel:${esc(r.customer_phone)}" class="btn sm" style="padding:2px 6px;" title="اتصال هاتفي" aria-label="اتصال">${icon("phone")}</a>
+                        <a href="https://wa.me/${esc(r.customer_phone.replace(/[^0-9]/g, ''))}" target="_blank" rel="noopener" class="btn sm" style="padding:2px 6px; color:#25D366;" title="مراسلة واتساب" aria-label="واتساب">${icon("whatsapp")}</a>
+                      </div>
+                    ` : '<span style="color:var(--muted)">-</span>'}
+                  </td>
+                  <td>
+                    <span style="font-size:12.5px; color:var(--text); max-width:200px; display:inline-block; overflow:hidden; text-overflow:ellipsis;" title="${esc(r.note || "")}">
+                      ${esc(r.note || "-")}
+                    </span>
+                  </td>
+                  <td><span class="pill info" style="font-size:11.5px;">${esc(r.branch_name || "الرئيسي")}</span></td>
+                  <td><span style="font-size:12.5px; color:var(--muted);">${esc(r.user_name || "-")}</span></td>
+                  <td><span style="font-size:12px; color:var(--muted);">${esc((r.created_at || "").slice(0, 16))}</span></td>
+                  <td style="text-align:center">
+                    ${statusPills[r.status] || `<span class="pill info">${esc(r.status)}</span>`}
+                  </td>
+                  <td style="text-align:center">
+                    <div style="display:inline-flex; align-items:center; gap:6px; justify-content:center;">
+                      <select aria-label="تغيير حالة الطلب" onchange="updateRequestStatus(${r.id}, this.value)" class="field" style="width:auto; padding:4px 8px; font-size:12px; height:32px; margin:0;">
+                        <option value="pending" ${r.status === 'pending' ? 'selected' : ''}>قيد الانتظار</option>
+                        <option value="ordered" ${r.status === 'ordered' ? 'selected' : ''}>تم الطلب</option>
+                        <option value="fulfilled" ${r.status === 'fulfilled' ? 'selected' : ''}>تم التوريد</option>
+                        <option value="cancelled" ${r.status === 'cancelled' ? 'selected' : ''}>ملغي</option>
+                      </select>
+                      ${isAdmin ? `
+                        <button type="button" class="btn sm ghost danger" onclick="deleteRequest(${r.id})" title="حذف الطلب" aria-label="حذف الطلب" style="padding:4px 8px; height:32px;">
+                          ${icon("trash")}
+                        </button>
+                      ` : ""}
+                    </div>
+                  </td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      `;
+    } catch (err) {
+      $("#requests-container").innerHTML = `<div class="empty" style="color:var(--danger)">فشل تحميل طلبات المنتجات: ${esc(err.message)}</div>`;
+    }
+  };
+
+  function updateKPIs(requests) {
+    let pending = 0, ordered = 0, fulfilled = 0;
+    requests.forEach(r => {
+      if (r.status === "pending") pending++;
+      else if (r.status === "ordered") ordered++;
+      else if (r.status === "fulfilled") fulfilled++;
+    });
+    if ($("#kpi-total")) $("#kpi-total").textContent = fmt(requests.length);
+    if ($("#kpi-pending")) $("#kpi-pending").textContent = fmt(pending);
+    if ($("#kpi-ordered")) $("#kpi-ordered").textContent = fmt(ordered);
+    if ($("#kpi-fulfilled")) $("#kpi-fulfilled").textContent = fmt(fulfilled);
+  }
+
+  window.openAddRequestModal = () => {
+    modal("تسجيل طلب منتج غير متوفر", `
+      <div class="form-grid">
+        <div class="field"><label>اسم الدواء أو المنتج *</label><input type="text" name="product_name" placeholder="مثال: بانادول جوينت، أوميغا 3" required autofocus></div>
+        <div class="field"><label>اسم العميل</label><input type="text" name="customer_name" placeholder="اختياري"></div>
+        <div class="field"><label>رقم هاتف العميل</label><input type="tel" name="customer_phone" placeholder="لإبلاغ العميل عند التوريد"></div>
+        ${isAdmin && branches.length > 1 ? `
+          <div class="field"><label>الفرع</label>
+            <select name="branch_id">
+              ${branches.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join("")}
+            </select>
+          </div>
+        ` : ""}
+        <div class="field" style="grid-column: 1 / -1;"><label>ملاحظات إضافية</label><input type="text" name="note" placeholder="مثلاً: الكمية المطلوبة، تركيز معين، شركة مفضلة"></div>
+      </div>
+    `, async (fd) => {
+      if (!fd.product_name || !fd.product_name.trim()) throw new Error("اسم المنتج مطلوب");
+      await api("/api/product-requests", {
+        method: "POST",
+        body: JSON.stringify(fd)
+      });
+      toast("تم تسجيل طلب المنتج بنجاح");
+      loadRequests();
+    }, "تسجيل الطلب");
+  };
+
+  window.updateRequestStatus = async (rid, status) => {
+    if (!status) return;
+    try {
+      await api(`/api/product-requests/${rid}/status`, {
+        method: "POST",
+        body: JSON.stringify({ status })
+      });
+      toast(`تم تحديث حالة الطلب إلى: ${statusLabels[status] || status}`);
+      loadRequests();
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  };
+
+  window.deleteRequest = async (rid) => {
+    if (!(await showPopupConfirm("هل أنت متأكد من حذف هذا الطلب؟", "حذف طلب منتج"))) return;
+    try {
+      await api(`/api/product-requests/${rid}`, { method: "DELETE" });
+      toast("تم حذف الطلب بنجاح");
+      loadRequests();
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  };
+
+  loadRequests();
+});
+</script>
+</body>
+</html>

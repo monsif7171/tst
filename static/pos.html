@@ -1,0 +1,1260 @@
+﻿<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="light">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تِــريَــاق — نقطة البيع (POS)</title>
+<link rel="stylesheet" href="css/app.css?v=2.3">
+  <link rel="stylesheet" href="css/responsive.css">
+  <link rel="stylesheet" href="css/design-system.css">
+<style>
+  .pos-grid { display: grid; grid-template-columns: 1fr 420px; gap: 16px; align-items: start; }
+  .pos-products { display: flex; flex-direction: column; gap: 12px; }
+  .pos-catalog { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; max-height: calc(100vh - 210px); overflow-y: auto; }
+  .prod-tile {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; text-align: start;
+    min-width: 0; overflow: hidden;
+  }
+  .prod-tile:hover { border-color: var(--primary); box-shadow: var(--shadow); }
+  .prod-tile b { font-size: 13px; line-height: 1.3; word-break: break-word; overflow-wrap: anywhere; }
+  .prod-tile .price { color: var(--primary); font-weight: 700; font-size: 13px; }
+  .prod-tile .stock { color: var(--muted); font-size: 11px; }
+  .pos-cart { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 12px; position: sticky; top: 80px; min-width: 0; max-width: 100%; box-sizing: border-box; }
+  .cart-table-wrap { width: 100%; max-height: 280px; overflow-y: auto; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 8px; }
+  .cart-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+  .cart-table th, .cart-table td { padding: 6px 4px; font-size: 12px; vertical-align: top; }
+  .cart-item-name { display: block; font-size: 12px; line-height: 1.35; word-break: break-word; overflow-wrap: anywhere; }
+  .cart-totals { border-top: 1px solid var(--border); padding-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .cart-totals > div:not(#payments-area) { display: flex; justify-content: space-between; font-weight: 600; align-items: center; }
+  .cart-totals div.tot { font-size: 16px; color: var(--primary); border-top: 1px dashed var(--border); padding-top: 6px; }
+  .pay-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+  .pay-row select { flex: 1; }
+  .pay-row input { width: 100px; }
+  .pay-row img { width: 24px; height: 24px; object-fit: contain; }
+
+  /* Payment method cards */
+  .payment-cards { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .payment-card {
+    border: 2px solid var(--border); border-radius: 10px; padding: 10px;
+    text-align: center; cursor: pointer; transition: all 0.2s;
+    background: var(--card); flex: 1 1 auto; min-width: 80px;
+  }
+  .payment-card:hover { border-color: var(--primary); }
+  .payment-card.selected { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, var(--card)); }
+  .payment-card img { width: 40px; height: 40px; object-fit: contain; margin-bottom: 4px; }
+  .payment-card span { font-size: 12px; font-weight: 600; display: block; }
+
+  /* Dosage / usage instructions */
+  .dose-btn { margin-top: 4px; padding: 2px 8px; font-size: 11px; border-radius: 999px; border: 1px dashed var(--primary); background: transparent; color: var(--primary); cursor: pointer; }
+  .dose-btn.rx { border-style: solid; animation: dosePulse 1.6s ease-in-out infinite; }
+  @keyframes dosePulse { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 35%, transparent); } 50% { box-shadow: 0 0 0 4px transparent; } }
+  .dose-summary { margin-top: 4px; display: flex; align-items: flex-start; gap: 4px; font-size: 11px; line-height: 1.4; color: var(--ok, #15803d); background: color-mix(in srgb, var(--ok, #15803d) 10%, var(--card)); border-radius: 8px; padding: 3px 6px; cursor: pointer; white-space: normal; }
+  .dose-summary:hover { outline: 1px solid var(--ok, #15803d); }
+  .dose-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 12px; }
+  @media(max-width:540px){ .dose-grid { grid-template-columns: 1fr; } }
+  .dose-field { display: flex; flex-direction: column; gap: 4px; }
+  .dose-field label { font-size: 12px; font-weight: 700; color: var(--text); }
+  .dose-select { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: inherit; font-family: inherit; font-size: 13px; }
+  .dose-select:focus { outline: none; border-color: var(--primary); }
+  .dose-text { width: 100%; min-height: 64px; resize: vertical; padding: 8px; border-radius: 8px; border: 1px solid var(--border); font-family: inherit; font-size: 13px; background: var(--card); color: inherit; }
+
+  /* POS Responsive Toolbar */
+  .pos-toolbar-wrap {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .pos-toolbar-wrap .search {
+    flex: 1 1 200px;
+    min-width: 180px;
+    position: relative;
+  }
+  .pos-toolbar-wrap .search > svg {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    inset-inline-start: 10px;
+    width: 16px;
+    height: 16px;
+    color: var(--muted);
+    pointer-events: none;
+  }
+  .pos-toolbar-wrap .search input {
+    padding-inline-start: 34px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .pos-filters-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .pos-filters-row select {
+    width: auto;
+    min-width: 130px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: inherit;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  .pos-barcode-row {
+    width: 185px;
+    margin: 0;
+  }
+  .pos-barcode-row input {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  @media(max-width:900px){
+    .pos-grid { grid-template-columns: 1fr; }
+    .pos-catalog { max-height: none; }
+    .pos-toolbar-wrap {
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: stretch !important;
+      gap: 10px !important;
+      width: 100% !important;
+    }
+    .pos-toolbar-wrap .search {
+      width: 100% !important;
+      min-width: 0 !important;
+      flex: none !important;
+      position: relative !important;
+    }
+    .pos-toolbar-wrap .search > svg {
+      position: absolute !important;
+      top: 50% !important;
+      transform: translateY(-50%) !important;
+      inset-inline-start: 10px !important;
+      width: 16px !important;
+      height: 16px !important;
+    }
+    .pos-toolbar-wrap .search input {
+      width: 100% !important;
+      box-sizing: border-box !important;
+      padding-inline-start: 34px !important;
+    }
+    .pos-filters-row {
+      display: flex !important;
+      gap: 8px !important;
+      width: 100% !important;
+    }
+    .pos-filters-row select {
+      flex: 1 1 50% !important;
+      width: 50% !important;
+      min-width: 0 !important;
+      box-sizing: border-box !important;
+      padding: 8px 6px !important;
+      font-size: 12px !important;
+    }
+    .pos-barcode-row {
+      width: 100% !important;
+      margin: 0 !important;
+      flex: none !important;
+    }
+    .pos-barcode-row input {
+      width: 100% !important;
+      box-sizing: border-box !important;
+    }
+  }
+    @media print {
+      @page { size: 80mm auto; margin: 0; }
+      body { background: white !important; margin: 0 !important; padding: 0 !important; }
+      body > *:not(#print-receipt-wrap) { display: none !important; }
+      #print-receipt-wrap {
+        display: block !important;
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 76mm !important;
+        padding: 4mm !important;
+        background: white !important;
+        color: #000 !important;
+        font-family: 'Arial', sans-serif !important;
+        font-size: 14px !important;
+        direction: rtl !important;
+      }
+      #print-receipt h2 { text-align: center; font-size: 20px; margin: 0 0 5px; font-weight: bold; }
+      #print-receipt p { text-align: center; margin: 3px 0; font-size: 12px; color: #000; }
+      #print-receipt table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+      #print-receipt th { font-weight: bold; border-bottom: 2px solid #000; padding: 6px 2px; text-align: right; }
+      #print-receipt td { padding: 6px 2px; border-bottom: 1px solid #ddd; font-size: 13px; }
+      #print-receipt .totals { border-top: 2px solid #000; padding-top: 8px; font-weight: bold; }
+      #print-receipt .totals-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; }
+      #print-receipt .totals-row.grand { font-size: 16px; border-top: 1px solid #000; margin-top: 5px; padding-top: 6px; }
+      #print-receipt .footer { text-align: center; margin-top: 15px; padding-top: 10px; border-top: 1px dashed #000; font-size: 12px; }
+      #print-receipt .rx-instr td { border-bottom: 1px dashed #ccc; padding: 0 2px 6px; font-size: 11.5px; font-style: italic; }
+      #print-receipt .photo-note { margin-top: 10px; padding: 6px; border: 2px solid #000; border-radius: 6px; text-align: center; font-size: 12px; font-weight: bold; }
+    }
+</style>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<link rel="apple-touch-icon" href="img/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ترياق">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#f2572c"></head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="js/app.js?v=2.2"></script>
+<script>
+boot("نقطة البيع (POS)", async (user, el) => {
+  let products = [];
+  let cart = [];
+  let prescribedProducts = new Set(); // Track prescription-only products
+
+  el.innerHTML = `
+  <div class="pos-grid">
+    <div class="pos-products">
+      <div class="pos-toolbar-wrap">
+        <div class="search has-camera">
+          ${icon("search")}
+          <input type="search" id="pos-search" placeholder="ابحث بالاسم أو الباركود... (F2)" autofocus>
+          <button type="button" class="btn-camera-scan" title="مسح باركود/QR بالكاميرا للبحث" onclick="openCameraScanner(c => { const inp = $('#pos-search'); if(inp){ inp.value = c; inp.dispatchEvent(new Event('input')); } }, {title: 'مسح باركود للبحث'})">${icon("camera")}</button>
+        </div>
+        <div class="pos-filters-row">
+          <select id="sort-products" aria-label="ترتيب الأدوية">
+              <option value="name">ترتيب: حسب الاسم</option>
+              <option value="price_asc">ترتيب: الأقل سعراً</option>
+              <option value="price_desc">ترتيب: الأعلى سعراً</option>
+              <option value="stock_desc">ترتيب: الأكثر توفراً</option>
+              <option value="stock_asc">ترتيب: الأوشك على النفاد</option>
+              <option value="category">ترتيب: التصنيف</option>
+          </select>
+          <select id="category-filter" aria-label="تصفية حسب التصنيف">
+            <option value="">جميع التصنيفات</option>
+          </select>
+        </div>
+        <div class="pos-barcode-row">
+          <div class="input-camera-wrap">
+            <input type="text" id="barcode-input" placeholder="مسح الباركود... (F3)" autocomplete="off">
+            <button type="button" class="btn-camera-scan" title="مسح باركود البيع بالكاميرا" onclick="openCameraScanner(c => handleBarcodeScan(c), {title: 'مسح باركود البيع بالكاميرا'})">${icon("camera")}</button>
+          </div>
+        </div>
+      </div>
+      <div class="pos-catalog" id="pos-catalog"></div>
+    </div>
+    <div class="pos-cart">
+      <div style="display:flex; justify-content:space-between; align-items:center">
+          <h2 class="panel-title" style="margin:0">${icon("cart")} سلة المشتريات</h2>
+          <div style="display:flex; gap:6px">
+            <button type="button" class="btn ghost sm" onclick="window.reprintLastReceipt()" title="إعادة طباعة آخر فاتورة">${icon("print")} آخر فاتورة</button>
+            <button type="button" class="btn ghost sm" onclick="window.clearCart()">${icon("trash")} مسح</button>
+          </div>
+      </div>
+      <div style="display:flex; gap:8px; margin-bottom:8px; align-items:center">
+        <button type="button" class="btn sm" onclick="window.selectCustomer()" style="flex:1">${icon("users")} <span>اختر عميلاً</span></button>
+        <span id="selected-cust-display" style="font-size:12px; align-self:center; display:inline-flex; align-items:center; gap:6px"></span>
+      </div>
+      <div id="points-redeem-area" style="display:none; background:var(--info-bg); border:1px solid var(--primary); border-radius:10px; padding:10px; margin-bottom:8px">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px">
+          <span style="font-size:12px; font-weight:600">استبدال النقاط بخصم</span>
+          <span id="cust-points-display" style="font-size:12px" class="pill ok"></span>
+        </div>
+        <div style="display:flex; gap:6px; align-items:center">
+          <input type="number" id="points-to-use" min="0" step="1" placeholder="عدد النقاط" style="flex:1; padding:4px 8px; font-size:12px" oninput="window.calcPointsDiscount()">
+          <span id="points-discount-value" style="font-size:12px; font-weight:600; color:var(--primary); min-width:60px"></span>
+        </div>
+        <div id="points-rules-hint" style="font-size:11px; color:var(--muted); margin-top:4px"></div>
+      </div>
+      <div class="cart-table-wrap">
+        <table class="cart-table">
+          <thead>
+            <tr>
+              <th style="width:42%">الدواء</th>
+              <th style="width:20%; text-align:center">السعر</th>
+              <th style="width:16%; text-align:center">الكمية</th>
+              <th style="width:22%; text-align:left">الإجمالي</th>
+              <th style="width:36px; text-align:center"></th>
+            </tr>
+          </thead>
+          <tbody id="cart-body"><tr><td colspan="5" class="empty">السلة فارغة</td></tr></tbody>
+        </table>
+      </div>
+      <div class="cart-totals">
+        <div><span>المجموع الفرعي:</span><span id="subtotal">0.00</span></div>
+        <div style="display:flex; justify-content:space-between; align-items:center">
+          <span>الخصم:</span>
+          <div style="display:flex; align-items:center; gap:6px; flex-shrink:0">
+            <select id="discount-type" aria-label="نوع الخصم" onchange="window.updateTotals()" style="width:90px; padding:4px 8px; border-radius:8px; border:1px solid var(--border); font-size:12px">
+              <option value="percent">نسبة %</option>
+              <option value="amount">مبلغ</option>
+            </select>
+            <input type="number" id="disc" value="0" min="0" step="0.01" aria-label="قيمة الخصم" style="width:85px; padding:4px 8px; text-align:left; border:1px solid var(--border); border-radius:8px; font-size:12px" oninput="updateTotals()">
+          </div>
+        </div>
+        <div class="tot"><span>الإجمالي النهائي:</span><span id="gtotal">0.00</span></div>
+
+        <div id="payments-area" style="margin-top:10px; border-top:1px solid var(--border); padding-top:10px; display: flex; flex-direction: column; width: 100%;">
+            <div id="payment-rows" style="display: flex; flex-direction: column; width: 100%;"></div>
+            <button type="button" class="btn ghost sm" onclick="window.addPaymentRow()" style="width: 100%; margin-top: 6px; justify-content: center; height: 38px; border: 1px dashed var(--primary); color: var(--primary);">+ إضافة طريقة دفع أخرى</button>
+        </div>
+
+        <div><span>المتبقي للعميل:</span><span id="change">0.00</span></div>
+      </div>
+      <button type="button" class="btn primary" id="checkout-btn" style="width:100%; justify-content:center; padding:12px">إتمام البيع وطباعة الفاتورة (F4)</button>
+    </div>
+  </div>`;
+
+
+  // جعل المتغيرات عالمية ليتمكن الـ HTML من الوصول إليها
+  window.PAYMENT_METHODS = [
+      {id: 'cash', name: 'نقداً', icon: 'cash'},
+      {id: 'bankak', name: 'بنكك', img: 'img/bankak.jpg'},
+      {id: 'fawry', name: 'فوري', img: 'img/fawry.png'},
+      {id: 'ocash', name: 'أوكاش', img: 'img/ocash.png'},
+      {id: 'bravo', name: 'برافو', img: 'img/bravo.png'}
+  ];
+
+  window.paymentRows = [{method: 'cash', amount: 0}];
+  let manualAmountEdited = false;
+  let productsWithPromo = new Map();
+  let categories = []; // Store categories for filtering
+
+  // Load categories for filtering
+  async function loadCategories() {
+    try {
+      const data = await api("/api/categories");
+      categories = data.categories || [];
+      renderCategoryFilter();
+    } catch (e) {
+      console.error('Failed to load categories:', e);
+    }
+  }
+
+  function renderCategoryFilter() {
+    const catFilter = $("#category-filter");
+    if (!catFilter) return;
+
+    let catFilterHtml = `<option value="">جميع التصنيفات</option>`;
+    categories.forEach(cat => {
+      catFilterHtml += `<option value="${esc(cat.name)}">${esc(cat.name)}</option>`;
+    });
+    catFilter.innerHTML = catFilterHtml;
+    catFilter.onchange = () => renderCatalog();
+  }
+
+  window.setPaymentMethod = (idx, methodId) => {
+      window.paymentRows[idx].method = methodId;
+      window.renderPayments();
+      window.updateTotals();
+  };
+
+  window.renderPayments = () => {
+      const container = $("#payment-rows");
+      if (!container) return;
+      container.innerHTML = window.paymentRows.map((row, idx) => `
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; background: var(--card); padding: 12px; border-radius: 12px; border: 1px solid var(--border); width: 100%; box-shadow: var(--shadow);">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: 12px; font-weight: bold; color: var(--primary);">طريقة الدفع ${idx + 1}</span>
+                  ${window.paymentRows.length > 1 ? `<button type="button" class="btn ghost danger sm" style="padding: 2px 6px; font-size: 11px;" onclick="window.removePaymentRow(${idx})">حذف ✕</button>` : ""}
+              </div>
+              <div class="payment-cards" style="display: flex; gap: 6px; flex-wrap: wrap; width: 100%;">
+                  <div class="payment-card ${row.method === "cash" ? "selected" : ""}"
+                       style="flex: 1 1 calc(20% - 6px); min-width: 65px; padding: 8px 4px; border: 2px solid ${row.method === "cash" ? "var(--primary)" : "var(--border)"}; border-radius: 8px; cursor: pointer; text-align: center; background: ${row.method === "cash" ? "color-mix(in srgb, var(--primary) 10%, var(--card))" : "var(--card)"}"
+                       onclick="window.setPaymentMethod(${idx}, 'cash')">
+                      <span style="display: block; font-size: 18px; margin-bottom: 2px;">💰</span>
+                      <span style="font-size: 11px; font-weight: bold;">نقداً</span>
+                  </div>
+                  ${window.PAYMENT_METHODS.filter(m => m.id !== "cash").map(m => `
+                      <div class="payment-card ${row.method === m.id ? "selected" : ""}"
+                           style="flex: 1 1 calc(20% - 6px); min-width: 65px; padding: 8px 4px; border: 2px solid ${row.method === m.id ? "var(--primary)" : "var(--border)"}; border-radius: 8px; cursor: pointer; text-align: center; background: ${row.method === m.id ? "color-mix(in srgb, var(--primary) 10%, var(--card))" : "var(--card)"}"
+                           onclick="window.setPaymentMethod(${idx}, '${m.id}')">
+                          <span style="display: block; font-size: 16px; margin-bottom: 2px;">${m.img ? `<img src="${m.img}" alt="${esc(m.name)}" style="width:18px; height:18px; object-fit:contain" onerror="this.outerHTML='💰'">` : "💰"}</span>
+                          <span style="font-size: 10px; font-weight: bold;">${m.name}</span>
+                      </div>
+                  `).join("")}
+              </div>
+              <div style="width: 100%;">
+                  <input type="number" class="payment-amount-input" data-idx="${idx}" value="${row.amount || ""}" min="0" step="0.01"
+                         style="width: 100%; box-sizing: border-box; font-size: 16px; font-weight: bold; height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border);"
+                         placeholder="المبلغ المدفوع..." oninput="window.onPaymentAmountInput(${idx}, this.value)">
+              </div>
+          </div>
+      `).join("");
+  };
+
+  window.onPaymentAmountInput = (idx, val) => {
+      manualAmountEdited = true;
+      window.paymentRows[idx].amount = parseFloat(val) || 0;
+      window.updateTotals(true);
+  };
+
+  window.addPaymentRow = () => {
+      manualAmountEdited = true;
+      window.paymentRows.push({method: 'cash', amount: 0});
+      window.renderPayments();
+      window.updateTotals(true);
+  };
+
+  window.removePaymentRow = (idx) => {
+      window.paymentRows.splice(idx, 1);
+      if (window.paymentRows.length === 1) manualAmountEdited = false;
+      window.renderPayments();
+      window.updateTotals();
+  };
+
+  window.clearCart = async () => {
+      if (!cart.length && !selectedCustomer) return;
+      if (await showPopupConfirm("هل أنت متأكد من مسح السلة؟", "مسح السلة")) {
+          cart = [];
+          manualAmountEdited = false;
+          window.paymentRows = [{method: 'cash', amount: 0}];
+          $("#disc").value = 0;
+          window.clearSelectedCustomer();
+          renderCart();
+          renderPayments();
+      }
+  };
+
+  // Barcode quick add logic (used by both input box and external scanner events)
+  async function handleBarcodeScan(rawCode) {
+    const barcode = String(rawCode || "").trim();
+    if (!barcode) return;
+
+    // 1. First check in-memory loaded products for fast response
+    let p = products.find((x) => x.barcode && String(x.barcode).trim() === barcode);
+
+    // 2. If not found in memory, query server directly
+    if (!p) {
+      try {
+        const data = await api(`/api/products?search=${encodeURIComponent(barcode)}`);
+        const list = data.products || [];
+        p = list.find((x) => x.barcode && String(x.barcode).trim() === barcode) || list[0];
+        if (p && !products.find((x) => x.id === p.id)) {
+          products.push(p);
+        }
+      } catch (e) {
+        console.error("Barcode lookup error:", e);
+      }
+    }
+
+    if (p) {
+      addToCart(p.id);
+      toast(`تمت إضافة: ${p.name}`);
+      const bInput = $("#barcode-input");
+      if (bInput) bInput.value = "";
+    } else {
+      toast(`الدواء غير موجود بالباركود: ${barcode}`, "error");
+    }
+  }
+
+  // Search & Barcode scanning logic
+  let searchTimer = null;
+  $("#pos-search").oninput = (e) => {
+      clearTimeout(searchTimer);
+      const q = e.target.value.trim();
+      searchTimer = setTimeout(() => {
+          loadProds(q);
+      }, 200);
+  };
+
+  $("#pos-search").onkeydown = async (e) => {
+      if (e.key === "Enter") {
+          const q = e.target.value.trim();
+          if (!q) return;
+          const exactBarcode = products.find(x => x.barcode && x.barcode === q);
+          if (exactBarcode) {
+              e.preventDefault();
+              addToCart(exactBarcode.id);
+              e.target.value = "";
+              loadProds("");
+              toast(`تمت إضافة: ${exactBarcode.name}`);
+          }
+      }
+  };
+
+  const barcodeInput = $("#barcode-input");
+  if (barcodeInput) {
+    barcodeInput.onkeydown = async (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const code = e.target.value;
+        await handleBarcodeScan(code);
+      }
+    };
+  }
+
+  // Keyboard shortcuts (F2: search, F3: barcode focus, F4: checkout)
+  document.addEventListener("keydown", (e) => {
+      if (e.key === "F2") {
+          e.preventDefault();
+          const s = $("#pos-search");
+          if (s) { s.focus(); s.select(); }
+      } else if (e.key === "F3") {
+          e.preventDefault();
+          const b = $("#barcode-input");
+          if (b) { b.focus(); b.select(); }
+      } else if (e.key === "F4") {
+          e.preventDefault();
+          $("#checkout-btn")?.click();
+      }
+  });
+
+  // Global Hardware Scanner Listener (captures rapid scanner keystrokes from anywhere on the page)
+  let scanBuffer = "";
+  let lastKeyTime = 0;
+  window.addEventListener("keydown", (e) => {
+    // If user is currently typing in search, customer inputs, or textarea, don't hijack unless barcode input itself
+    const activeEl = document.activeElement;
+    const isTextInput = activeEl && (
+      activeEl.tagName === "TEXTAREA" ||
+      (activeEl.tagName === "INPUT" && activeEl.id !== "barcode-input" && activeEl.type !== "button" && activeEl.type !== "submit")
+    );
+
+    const now = Date.now();
+    // Hardware scanners typically send characters < 35-50ms apart
+    if (now - lastKeyTime > 65) {
+      scanBuffer = "";
+    }
+    lastKeyTime = now;
+
+    if (e.key === "Enter") {
+      if (scanBuffer.length >= 3 && !isTextInput) {
+        e.preventDefault();
+        const scannedCode = scanBuffer;
+        scanBuffer = "";
+        handleBarcodeScan(scannedCode);
+      } else {
+        scanBuffer = "";
+      }
+      return;
+    }
+
+    if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      scanBuffer += e.key;
+    }
+  });
+
+  async function loadPromotionalPrices() {
+    productsWithPromo.clear();
+    try {
+      const data = await api("/api/promotions/active-prices");
+      const prices = (data && data.prices) || {};
+      Object.entries(prices).forEach(([pid, promo]) => {
+        if (promo && promo.has_promotion) {
+          productsWithPromo.set(Number(pid), promo);
+        }
+      });
+    } catch (e) {
+      console.error("Failed to load promotional prices:", e);
+    }
+    renderCatalog();
+    renderCart();
+  }
+
+  let promosLoaded = false;
+  async function loadProds(search = "") {
+    const cat = $("#pos-catalog");
+    if (cat && (!products || products.length === 0)) {
+      cat.innerHTML = posTilesSkeletonHTML(8);
+    }
+    const data = await api(`/api/products?search=${encodeURIComponent(search)}`);
+    products = data.products || [];
+    applySort();
+    if (!promosLoaded) {
+      promosLoaded = true;
+      loadPromotionalPrices();
+    }
+  }
+
+  function applySort() {
+    const sortBy = $("#sort-products").value;
+    products.sort((a, b) => {
+        if (sortBy === 'name') return (a.name || '').localeCompare(b.name || '', 'ar');
+        if (sortBy === 'price_asc') return (a.sale_price || 0) - (b.sale_price || 0);
+        if (sortBy === 'price_desc') return (b.sale_price || 0) - (a.sale_price || 0);
+        if (sortBy === 'stock_desc') return (b.stock || 0) - (a.stock || 0);
+        if (sortBy === 'stock_asc') return (a.stock || 0) - (b.stock || 0);
+        if (sortBy === 'category') return (a.category || '').localeCompare(b.category || '', 'ar');
+        return 0;
+    });
+    renderCatalog();
+  }
+
+  $("#sort-products").onchange = applySort;
+
+  function renderCatalog() {
+    const cat = $("#pos-catalog");
+    const selectedCategory = $("#category-filter") ? $("#category-filter").value : "";
+    const filtered = selectedCategory ? products.filter(p => p.category === selectedCategory) : products;
+    if (!filtered.length) { cat.innerHTML = '<div class="empty">لا توجد أدوية مطابقة</div>'; return; }
+    cat.innerHTML = filtered.map((p) => {
+      const isRx = p.is_prescription;
+      if (isRx) prescribedProducts.add(p.id);
+      const promo = productsWithPromo.get(p.id);
+      const expiredQty = (p.total_stock_with_expired || 0) - (p.stock || 0);
+      const hasExpiredStock = expiredQty > 0;
+      const isFullyExpired = p.stock <= 0 && p.total_stock_with_expired > 0;
+      const tileClass = isFullyExpired ? 'prod-tile expired-tile' : 'prod-tile';
+      const clickHandler = isFullyExpired ? '' : 'onclick="event.stopPropagation(); addToCart(' + p.id + ')"';
+
+      const metaParts = [];
+      if (p.form) metaParts.push(p.form);
+      if (p.strength) metaParts.push(p.strength);
+      const metaText = metaParts.join(" • ");
+
+      return `
+      <div class="${tileClass}" id="tile_${p.id}" data-name="${esc(p.name)}" ${clickHandler}>
+        <b>${esc(p.name)}${isRx ? '<span class="pill danger" style="margin-right:6px;font-size:10px;">يتطلب وصفة</span>' : ''}</b>
+        ${p.generic_name ? `<span style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(p.generic_name)}">${esc(p.generic_name)}</span>` : ''}
+        ${metaText ? `<span style="font-size:10.5px;color:var(--primary);font-weight:600;">${esc(metaText)}</span>` : ''}
+        ${p.barcode ? `<span class="mono" style="font-size:10px;color:var(--muted);">${esc(p.barcode)}</span>` : ''}
+        ${promo && promo.has_promotion
+          ? `<span class="price">${money(promo.final_price)} <del style="color:var(--muted);font-size:11px;font-weight:400">${money(p.sale_price)}</del></span>`
+          : `<span class="price">${money(p.sale_price)}</span>`}
+        <span class="stock">المتوفر: ${fmt(p.stock)} ${esc(p.unit || "")}</span>
+        ${isFullyExpired ? '<span style="color: var(--danger); font-size: 11px; font-weight: bold;">⛔ منتهي الصلاحية</span>'
+          : hasExpiredStock ? `<span style="color: var(--warn); font-size: 10px;">⚠ ${fmt(expiredQty)} قطعة منتهية</span>` : ''}
+        <button type="button" class="btn sm ghost" style="padding:3px 6px; font-size:11px; margin-top:auto; width:100%; justify-content:center; border:1px dashed var(--border);" onclick="event.stopPropagation(); showCrossBranchLookup(${p.id})">${icon("building")} الفروع والبدائل</button>
+      </div>`;
+    }).join("");
+  }
+
+  window.showCrossBranchLookup = async (pid, opts = {}) => {
+    try {
+      const data = await api(`/api/products/${pid}/branches-lookup`);
+      const p = data.product || {};
+      const brs = data.branches || [];
+      const alts = data.alternatives || [];
+
+      const branchesHtml = brs.map((br) => `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 10px; border:1px solid var(--border); border-radius:8px; margin-bottom:6px; background:${br.is_current ? 'color-mix(in srgb, var(--primary) 6%, var(--card))' : 'var(--bg)'}">
+          <div>
+            <b>${esc(br.branch_name)}</b>
+            ${br.is_current ? '<span class="pill info" style="font-size:10px;margin-right:4px">فرعك الحالي</span>' : ''}
+            ${br.phone ? `<div style="font-size:11px; color:var(--muted)">📞 ${esc(br.phone)}${br.address ? ' — ' + esc(br.address) : ''}</div>` : ''}
+          </div>
+          <span class="pill ${br.stock > 0 ? 'ok' : 'danger'}">${br.stock > 0 ? `متوفر: ${fmt(br.stock)} ${esc(p.unit || "")}` : 'غير متوفر (0)'}</span>
+        </div>
+      `).join("");
+
+      const altsHtml = alts.length ? alts.map((a) => {
+        const otherBrs = (a.branches_with_stock || []).filter(b => !b.is_current).map(b => `${esc(b.branch_name)} (${fmt(b.stock)})`).join(" ، ");
+        return `
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px 10px; border:1px solid var(--border); border-radius:8px; margin-bottom:6px; background:var(--bg)">
+            <div style="flex:1">
+              <b>${esc(a.name)}</b> <span style="font-size:11px; color:var(--muted)">${esc(a.strength || "")} ${esc(a.form || "")}</span>
+              <div style="font-size:12px; color:var(--primary); font-weight:700">${money(a.sale_price)}</div>
+              <div style="font-size:11px; color:var(--muted); margin-top:2px">
+                في فرعك: <b style="color:${a.current_stock > 0 ? 'var(--ok, #15803d)' : 'var(--danger)'}">${fmt(a.current_stock)} ${esc(a.unit || "")}</b>
+                ${otherBrs ? ` | فروع أخرى: <b>${otherBrs}</b>` : ''}
+              </div>
+            </div>
+            ${a.current_stock > 0 ? `<button type="button" class="btn sm primary pick-alt-btn" data-alt-id="${a.id}">${icon("plus")} أضف للسلة</button>` : `<span class="pill warn" style="font-size:10px">غير متوفر بفرعك</span>`}
+          </div>
+        `;
+      }).join("") : `<div class="empty" style="padding:10px; font-size:12px">لا توجد بدائل مسجلة لنفس المادة الفعالة (${esc(p.generic_name || "غير محددة")})</div>`;
+
+      const back = modal(opts.outOfStockPrompt ? `⚠️ دواء غير متوفر — ${p.name}` : `توفر الفروع والبدائل — ${p.name}`, `
+        ${opts.outOfStockPrompt ? `
+          <div style="padding:10px 12px; border-radius:8px; background:color-mix(in srgb, var(--danger) 12%, var(--card)); color:var(--danger); margin-bottom:12px; font-size:13px; text-align:center; font-weight:600;">
+            الدواء (${esc(p.name)}) غير متوفر حالياً في مخزون هذا الفرع. يمكنك التحقق من الفروع الأخرى أو اختيار بديل أو تسجيل طلب للعميل.
+          </div>
+        ` : ""}
+        <div style="margin-bottom:12px">
+          <b style="font-size:13px; display:block; margin-bottom:6px;">🏢 الرصيد المتوفر في الفروع:</b>
+          <div style="max-height:170px; overflow-y:auto;">${branchesHtml}</div>
+        </div>
+        <div style="border-top:1px solid var(--border); padding-top:10px;">
+          <b style="font-size:13px; display:block; margin-bottom:6px;">💊 البدائل لنفس المادة الفعالة (${esc(p.generic_name || "غير محدد")}):</b>
+          <div style="max-height:190px; overflow-y:auto;">${altsHtml}</div>
+        </div>
+      `, async () => {
+        openProductRequestModal(p.name);
+      }, "تسجيل طلب نواقص للعميل");
+
+      const modalBox = $(".modal", back);
+      if (modalBox) modalBox.style.width = "min(620px, 100%)";
+
+      $$(".pick-alt-btn", back).forEach((btn) => {
+        btn.onclick = async () => {
+          const altId = Number(btn.dataset.altId);
+          if (!products.find(x => x.id === altId)) {
+            await loadProds("");
+          }
+          back.remove();
+          addToCart(altId);
+          toast("تمت إضافة الدواء البديل إلى السلة");
+        };
+      });
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  };
+
+  window.addToCart = async (pid) => {
+    const p = products.find((x) => x.id === pid);
+    if (!p) return;
+
+    if (p.stock <= 0) {
+      const hasAnyStock = p.total_stock_with_expired > 0;
+      if (hasAnyStock) {
+        toast("لا يمكن صرف هذا الدواء — المخزون المتوفر منتهي الصلاحية بالكامل", "error");
+        showCrossBranchLookup(p.id, { outOfStockPrompt: true });
+      } else {
+        showCrossBranchLookup(p.id, { outOfStockPrompt: true });
+      }
+      return;
+    }
+
+    const ex = cart.find((i) => i.product_id === pid);
+    if (ex) {
+      if (ex.qty + 1 > p.stock) { toast("الكمية المتوفرة لا تكفي", "warn"); return; }
+      ex.qty += 1;
+    } else {
+      // Check for promotional price
+      let price = p.sale_price;
+      if (productsWithPromo.has(p.id)) {
+        const promoData = productsWithPromo.get(p.id);
+        if (promoData && promoData.has_promotion) {
+          price = promoData.final_price;
+        }
+      }
+
+      const newItem = { product_id: p.id, name: p.name, price: price, qty: 1, stock: p.stock, instructions: "" };
+      cart.push(newItem);
+    }
+    renderCart();
+  };
+
+  function doseCell(i, idx) {
+    if (i.instructions) {
+      return `<div class="dose-summary" title="اضغط للتعديل" onclick="openDoseModal(${idx})">💊 <span>${esc(i.instructions)}</span></div>`;
+    }
+    const isRx = prescribedProducts.has(i.product_id);
+    return `<button type="button" class="dose-btn ${isRx ? "rx" : ""}" onclick="openDoseModal(${idx})"
+              title="${isRx ? "دواء يتطلب وصفة — يُنصح بكتابة الجرعة" : "إضافة طريقة الاستخدام"}">+ الجرعة 💊</button>`;
+  }
+
+  function renderCart() {
+    const tbody = $("#cart-body");
+    if (!cart.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty">السلة فارغة</td></tr>'; updateTotals(); return; }
+    tbody.innerHTML = cart.map((i, idx) => `
+      <tr>
+        <td style="overflow:hidden">
+          <b class="cart-item-name">${esc(i.name)}</b>
+          ${doseCell(i, idx)}
+        </td>
+        <td style="text-align:center; font-size:11px; white-space:nowrap">${money(i.price)}</td>
+        <td style="text-align:center"><input type="number" min="1" max="${i.stock}" value="${i.qty}" style="width:100%; max-width:48px; padding:2px 3px; text-align:center; box-sizing:border-box" onchange="updateQty(${idx}, this.value)"></td>
+        <td style="text-align:left; font-size:11px; font-weight:700; white-space:nowrap">${money(i.price * i.qty)}</td>
+        <td style="text-align:center"><button class="btn ghost sm" style="padding:2px 4px" onclick="removeFromCart(${idx})">${icon("trash")}</button></td>
+      </tr>`).join("");
+    updateTotals();
+  }
+
+  window.updateQty = (idx, val) => {
+    const q = parseFloat(val);
+    if (isNaN(q) || q <= 0) { cart.splice(idx, 1); }
+    else if (q > cart[idx].stock) { toast("الكمية تتجاوز المتوفر", "warn"); cart[idx].qty = cart[idx].stock; }
+    else { cart[idx].qty = q; }
+    renderCart();
+  };
+
+  window.removeFromCart = (idx) => { cart.splice(idx, 1); renderCart(); };
+
+  // ── Dosage / usage instructions builder ──────────────────────────
+  const DOSE_GROUPS = [
+    { key: "amount", title: "1️⃣ الكمية / الشكل", placeholder: "-- اختر الكمية / الشكل --", options: ["قرص واحد", "نصف قرص", "قرصين", "كبسولة", "ملعقة صغيرة", "ملعقة كبيرة", "بخة", "نقطتين", "دهان موضعي"] },
+    { key: "freq",   title: "2️⃣ التكرار", placeholder: "-- اختر التكرار --", options: ["كل 6 ساعات", "كل 8 ساعات", "كل 12 ساعة", "مرة واحدة يومياً", "مرتين يومياً", "3 مرات يومياً", "عند اللزوم", "قبل النوم"] },
+    { key: "food",   title: "3️⃣ التوقيت مع الطعام", placeholder: "-- اختر التوقيت مع الطعام --", options: ["بعد الأكل", "قبل الأكل", "مع الأكل", "على الريق"] },
+    { key: "dur",    title: "4️⃣ مدة العلاج", placeholder: "-- اختر مدة العلاج --", options: ["لمدة 3 أيام", "لمدة 5 أيام", "لمدة أسبوع", "لمدة 10 أيام", "لمدة أسبوعين", "لمدة شهر", "حتى انتهاء العبوة"] },
+  ];
+
+  window.openDoseModal = (idx) => {
+    const item = cart[idx];
+    if (!item) return;
+    const sel = {};          // selected value per group
+    let lastComposed = "";   // last auto-built sentence
+
+    // Try pre-populating select dropdowns if existing instructions match options
+    if (item.instructions) {
+      const text = item.instructions;
+      DOSE_GROUPS.forEach((g) => {
+        const found = g.options.find((opt) => text.includes(opt));
+        if (found) sel[g.key] = found;
+      });
+    }
+
+    const selectsHtml = `
+      <div class="dose-grid">
+        ${DOSE_GROUPS.map((g) => `
+          <div class="dose-field">
+            <label for="dose-sel-${g.key}">${g.title}</label>
+            <select id="dose-sel-${g.key}" class="dose-select" data-group="${g.key}">
+              <option value="">${g.placeholder}</option>
+              ${g.options.map((opt) => `<option value="${esc(opt)}" ${sel[g.key] === opt ? "selected" : ""}>${esc(opt)}</option>`).join("")}
+            </select>
+          </div>
+        `).join("")}
+      </div>`;
+
+    const back = modal(`💊 طريقة الاستخدام: ${item.name}`, `
+      ${selectsHtml}
+      <div class="field" style="margin-top:4px">
+        <label style="font-size:12px; font-weight:700">📝 نص الجرعة النهائي (يمكنك التعديل عليه مباشرة):</label>
+        <textarea name="instructions" class="dose-text" maxlength="500" placeholder="مثال: قرص واحد كل 8 ساعات بعد الأكل لمدة 5 أيام">${esc(item.instructions || "")}</textarea>
+      </div>
+      <button type="button" class="btn ghost sm" id="dose-clear" style="margin-top:4px">🗑️ مسح الكل</button>
+    `, async (fd) => {
+      item.instructions = String(fd.instructions || "").trim().slice(0, 500);
+      renderCart();
+    }, "💾 حفظ الجرعة");
+
+    const ta = $("textarea[name=instructions]", back);
+    const compose = () => DOSE_GROUPS.map((g) => sel[g.key]).filter(Boolean).join(" ");
+    lastComposed = compose();
+
+    // Listen to drop list changes
+    $$(".dose-select", back).forEach((selectEl) => {
+      selectEl.addEventListener("change", (e) => {
+        const g = e.target.dataset.group;
+        sel[g] = e.target.value || undefined;
+
+        const manualEdit = ta.value.trim() && ta.value.trim() !== lastComposed;
+        if (manualEdit) {
+          // If the user already wrote custom text, append new non-empty selection smoothly
+          if (sel[g]) {
+            ta.value = (ta.value.trim() + " " + sel[g]).trim();
+          }
+          lastComposed = "";
+        } else {
+          lastComposed = compose();
+          ta.value = lastComposed;
+        }
+      });
+    });
+
+    $("#dose-clear", back).onclick = () => {
+      Object.keys(sel).forEach((k) => delete sel[k]);
+      $$(".dose-select", back).forEach((s) => (s.value = ""));
+      ta.value = "";
+      lastComposed = "";
+      ta.focus();
+    };
+    setTimeout(() => ta.focus(), 50);
+  };
+
+  window.updateTotals = function updateTotals(fromPaymentInput = false) {
+      const sub = cart.reduce((s, i) => s + i.price * i.qty, 0);
+      const discType = $("#discount-type") ? $("#discount-type").value : "percent";
+      const discVal = Math.max(0, parseFloat($("#disc").value) || 0);
+      let disc = 0;
+      if (discType === "percent") {
+        disc = (sub * discVal) / 100;
+      } else {
+        disc = Math.min(discVal, sub);
+      }
+
+      // Points discount
+      let pointsDisc = 0;
+      const ptsInput = $("#points-to-use");
+      if (ptsInput && selectedCustomer && loyaltySettings) {
+        const pts = parseFloat(ptsInput.value) || 0;
+        if (pts > 0) {
+          pointsDisc = pts * parseFloat(loyaltySettings.loyalty_point_value || "0.5");
+          // Cap at max discount % of subtotal
+          const maxPct = parseFloat(loyaltySettings.loyalty_max_discount_pct || "30");
+          const maxDisc = (sub * maxPct) / 100;
+          pointsDisc = Math.min(pointsDisc, maxDisc);
+        }
+      }
+
+      const tot = Math.max(0, sub - disc - pointsDisc);
+
+      const paidTotal = window.paymentRows.reduce((s, r) => {
+        const amt = parseFloat(r.amount) || 0;
+        return s + amt;
+      }, 0);
+
+      const changeVal = paidTotal > tot ? (paidTotal - tot) : 0;
+
+      $("#subtotal").textContent = money(sub);
+      $("#gtotal").textContent = money(tot);
+      $("#change").textContent = money(changeVal);
+  };
+
+  $("#disc").oninput = window.updateTotals;
+
+  // Customer selection for loyalty points
+  let selectedCustomer = null;
+
+  window.selectCustomer = async () => {
+    try {
+      const customers = (await api("/api/customers")).customers || [];
+      const modalEl = modal("اختر عميلاً", `
+        <div class="field"><label>ابحث عن عميل</label><input type="text" id="cust-search" placeholder="بالاسم أو الهاتف..." autofocus></div>
+        <div id="cust-list" style="max-height:300px; overflow-y:auto; margin-top:12px"></div>
+      `, () => {}, "إغلاق");
+
+      const submitBtn = modalEl.querySelector("button[type='submit']");
+      if (submitBtn) submitBtn.style.display = "none";
+
+      const formEl = modalEl.querySelector("#modal-form");
+      if (formEl) formEl.onsubmit = (e) => e.preventDefault();
+
+      const renderCusts = (cs) => {
+        const list = modalEl.querySelector("#cust-list");
+        if (!list) return;
+        if (!cs || cs.length === 0) {
+          list.innerHTML = '<div class="empty">لا يوجد عملاء</div>';
+          return;
+        }
+        list.innerHTML = cs.map(c => `
+          <div style="padding:8px; border-bottom:1px solid var(--border); cursor:pointer; display:flex; justify-content:space-between; align-items:center"
+            onclick="window.confirmCustomer(${JSON.stringify({id: c.id, name: c.name, loyalty_no: c.loyalty_no, points: c.points}).replace(/"/g, "&quot;")})">
+            <div>
+              <b>${esc(c.name || "بدون اسم")}</b>
+              <span class="sub" style="display:block; font-size:11px; color:var(--muted)">${esc(c.phone || "")}</span>
+            </div>
+            <span class="pill" style="flex-shrink:0">${fmt(c.points || 0)} نقطة</span>
+          </div>
+        `).join("");
+      };
+
+      renderCusts(customers);
+
+      let t;
+      const searchInput = modalEl.querySelector("#cust-search");
+      if (searchInput) {
+        searchInput.oninput = (e) => {
+          clearTimeout(t);
+          t = setTimeout(async () => {
+            try {
+              const data = await api(`/api/customers?search=${encodeURIComponent(e.target.value || "")}`);
+              renderCusts(data.customers || []);
+            } catch (err) {
+              console.error('Customer search failed:', err);
+            }
+          }, 250);
+        };
+      }
+    } catch (err) {
+      toast("فشل تحميل العملاء: " + err.message, "error");
+    }
+  };
+
+  window.openProductRequestModal = (productName) => {
+    const custName = selectedCustomer ? selectedCustomer.name : "";
+    const custPhone = selectedCustomer ? (selectedCustomer.phone || "") : "";
+    modal("تسجيل طلب منتج غير متوفر", `
+      <div class="form-grid">
+        <div class="field"><label>اسم المنتج *</label><input type="text" name="product_name" value="${esc(productName)}" readonly></div>
+        <div class="field"><label>اسم العميل</label><input type="text" name="customer_name" value="${esc(custName)}" placeholder="اختياري"></div>
+        <div class="field"><label>هاتف العميل</label><input type="text" name="customer_phone" value="${esc(custPhone)}" placeholder="اختياري"></div>
+        <div class="field"><label>ملاحظات</label><input type="text" name="note" placeholder="مثلاً: الكمية المطلوبة، لون معين، إلخ"></div>
+      </div>
+    `, async (fd) => {
+      // Ensure product_name is always sent
+      const payload = {
+        product_name: productName,
+        customer_name: fd.customer_name || "",
+        customer_phone: fd.customer_phone || "",
+        note: fd.note || ""
+      };
+      const res = await api("/api/product-requests", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+      toast("تم تسجيل الطلب بنجاح، سيصل للإدارة");
+    }, "إرسال الطلب");
+  };
+
+  let loyaltySettings = null;
+
+  window.confirmCustomer = async (cust) => {
+    selectedCustomer = cust;
+    updateCustomerDisplay();
+    toast('تم اختيار: ' + (cust.name || cust.loyalty_no || 'عميل'));
+    const backdrop = document.querySelector('.modal-backdrop');
+    if (backdrop) backdrop.remove();
+
+    // Show points redemption area
+    const area = $("#points-redeem-area");
+    if (cust && (cust.points || 0) > 0) {
+      area.style.display = "block";
+      $("#cust-points-display").textContent = `${fmt(cust.points)} نقطة متاحة`;
+      try {
+        if (!loyaltySettings) {
+          loyaltySettings = (await api("/api/loyalty/settings")).settings;
+        }
+        const minRedeem = loyaltySettings.loyalty_min_redeem || "50";
+        const pointValue = loyaltySettings.loyalty_point_value || "0.5";
+        $("#points-rules-hint").textContent = `الحد الأدنى: ${minRedeem} نقطة | قيمة النقطة: ${pointValue}`;
+      } catch(e) {
+        $("#points-rules-hint").textContent = "";
+      }
+    } else {
+      area.style.display = "none";
+      $("#points-to-use").value = "";
+      $("#points-discount-value").textContent = "";
+    }
+  };
+
+  window.calcPointsDiscount = () => {
+    const pts = parseFloat($("#points-to-use").value) || 0;
+    if (!loyaltySettings || pts <= 0) {
+      $("#points-discount-value").textContent = "";
+      updateTotals();
+      return;
+    }
+    const val = pts * parseFloat(loyaltySettings.loyalty_point_value || "0.5");
+    $("#points-discount-value").textContent = `= ${money(val)}`;
+    updateTotals();
+  };
+
+  window.clearSelectedCustomer = () => {
+    selectedCustomer = null;
+    const area = $("#points-redeem-area");
+    if (area) area.style.display = "none";
+    if ($("#points-to-use")) $("#points-to-use").value = "";
+    if ($("#points-discount-value")) $("#points-discount-value").textContent = "";
+    updateCustomerDisplay();
+    updateTotals();
+  };
+
+  window.updateCustomerDisplay = () => {
+    if (selectedCustomer) {
+      $("#selected-cust-display").innerHTML = `<span class="pill info">${esc(selectedCustomer.name || selectedCustomer.loyalty_no)} (${fmt(selectedCustomer.points || 0)} نقطة)</span> <button type="button" class="btn ghost sm" onclick="window.clearSelectedCustomer()" title="إلغاء اختيار العميل" style="padding:2px 6px">✕</button>`;
+    } else {
+      $("#selected-cust-display").innerHTML = "";
+    }
+  };
+
+  window.printReceipt = async (sale) => {
+    let itemsHtml = '';
+    let hasInstructions = false;
+    let detail = null;
+    const instrRow = (txt) => {
+      if (!txt) return "";
+      hasInstructions = true;
+      return `<tr class="rx-instr"><td colspan="4" style="text-align:right; padding:0 2px 6px; border-bottom:1px dashed #ccc; font-size:11.5px; font-style:italic">📋 طريقة الاستخدام: ${esc(txt)}</td></tr>`;
+    };
+    const lineStyle = (txt) => txt ? "" : "border-bottom:1px dashed #ccc;";
+    try {
+      detail = await api(`/api/sales/${sale.sale_id}`);
+      const saleItems = (detail && detail.items) || [];
+      itemsHtml = saleItems.map(it => `
+        <tr>
+          <td style="text-align:right; padding:4px 2px; ${lineStyle(it.instructions)}">${esc(it.name || it.product_name || 'Unknown')}</td>
+          <td style="text-align:center; padding:4px 2px; ${lineStyle(it.instructions)}">${fmt(it.qty)}</td>
+          <td style="text-align:center; padding:4px 2px; ${lineStyle(it.instructions)}">${money(it.price)}</td>
+          <td style="text-align:left; padding:4px 2px; ${lineStyle(it.instructions)}">${money(it.line_total || (it.price * it.qty))}</td>
+        </tr>${instrRow(it.instructions)}`).join("");
+    } catch (e) {
+      console.error('Failed to load sale items:', e);
+      itemsHtml = (sale.items || cart).map(i => `
+        <tr>
+          <td style="text-align:right; padding:4px 2px; ${lineStyle(i.instructions)}">${esc(i.name)}</td>
+          <td style="text-align:center; padding:4px 2px; ${lineStyle(i.instructions)}">${fmt(i.qty)}</td>
+          <td style="text-align:center; padding:4px 2px; ${lineStyle(i.instructions)}">${money(i.price)}</td>
+          <td style="text-align:left; padding:4px 2px; ${lineStyle(i.instructions)}">${money(i.price * i.qty)}</td>
+        </tr>${instrRow(i.instructions)}`).join("");
+    }
+
+    const sub = sale.subtotal || (detail && detail.subtotal) || (itemsHtml ? cart.reduce((s, i) => s + i.price * i.qty, 0) : sale.total);
+    const date = (detail && detail.sale_date) ? new Date(detail.sale_date).toLocaleString("ar-EG", { dateStyle: 'short', timeStyle: 'short' }) : new Date().toLocaleString("ar-EG", { dateStyle: 'short', timeStyle: 'short' });
+    const custInfo = selectedCustomer || (detail && detail.customer_name ? { name: detail.customer_name } : null);
+    const customerLine = custInfo
+      ? `<tr><td colspan="4" style="text-align:center; font-size:11px; color:#555">${esc(custInfo.name || custInfo.loyalty_no)} ${sale.points_earned ? `| النقاط: ${fmt(sale.points_earned)}` : ""}</td></tr>`
+      : "";
+
+    const methodMap = { cash: "نقداً", bankak: "بنكك", fawry: "فوري", ocash: "أوكاش", bravo: "برافو", card: "بطاقة مصرفية" };
+    const pm = (sale.payment_methods || sale.payments || (detail && detail.payments) || []);
+    const payRows = pm.length > 0
+      ? pm.map(m => `<div class="totals-row"><span>${esc(methodMap[m.method] || m.method)}:</span><span>${money(m.amount)}</span></div>`).join("")
+      : `<div class="totals-row"><span>المدفوع:</span><span>${money(sale.paid ?? (detail && detail.paid) ?? sale.total)}</span></div>`;
+
+    const changeVal = sale.change ?? (detail ? Math.max(0, (detail.paid || 0) - (detail.total || 0)) : 0);
+    const totalVal = sale.total ?? (detail && detail.total) ?? 0;
+    const invNo = sale.invoice_no || (detail && detail.invoice_no) || "";
+
+    // Save last sale for reprint
+    window.lastSaleReceipt = { sale_id: sale.sale_id, invoice_no: invNo, total: totalVal, paid: sale.paid, change: changeVal, subtotal: sub };
+    try { localStorage.setItem("triyaq_last_sale", JSON.stringify({ sale_id: sale.sale_id, invoice_no: invNo })); } catch(e){}
+
+    const receiptContent = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">
+      <style>
+        @page { size: 80mm auto; margin: 0; }
+        body { background: white; margin: 0; padding: 4mm; color: #000; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; font-size: 13px; direction: rtl; width: 72mm; margin: 0 auto; }
+        .logo-box { text-align: center; border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 8px; }
+        .logo-box img { width: 40px; height: 40px; object-fit: contain; margin-bottom: 2px; }
+        .logo-box h2 { margin: 0; font-size: 20px; font-weight: bold; }
+        .logo-box p { margin: 2px 0; font-size: 11px; }
+        .info-p { text-align: center; margin: 2px 0; font-size: 11px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 12px; }
+        th { border-bottom: 2px solid #000; padding: 4px 2px; font-size: 12px; }
+        td { border-bottom: 1px dashed #ccc; padding: 3px 2px; }
+        .totals { border-top: 2px solid #000; padding-top: 6px; font-size: 12px; margin-top: 6px; }
+        .totals-row { display: flex; justify-content: space-between; margin-bottom: 3px; }
+        .totals-row.grand { font-size: 15px; font-weight: bold; border-top: 1px solid #000; padding-top: 4px; margin-top: 4px; }
+        .rx-instr td { border-bottom: 1px dashed #ccc; padding: 0 2px 5px; font-size: 11px; font-style: italic; }
+        .photo-note { margin-top: 8px; padding: 6px; border: 1.5px solid #000; border-radius: 6px; text-align: center; font-size: 11px; font-weight: bold; }
+        .footer { text-align: center; margin-top: 12px; padding-top: 8px; border-top: 1px dashed #000; font-size: 11px; }
+      </style></head>
+      <body>
+        <div class="logo-box">
+          <img src="img/logo.png" alt="ترياق">
+          <h2>تِــريَــاق</h2>
+          <p>نظام إدارة الصيدلية الذكي</p>
+        </div>
+        <p class="info-p">${esc(date)}</p>
+        <p class="info-p">فاتورة رقم: <b>${esc(invNo)}</b></p>
+        <p class="info-p">${esc(user.full_name || user.username)}</p>
+        <table>
+          <thead><tr>
+            <th style="width:42%; text-align:right">الصنف</th>
+            <th style="width:14%; text-align:center">الكمية</th>
+            <th style="width:20%; text-align:center">السعر</th>
+            <th style="width:24%; text-align:left">الإجمالي</th>
+          </tr></thead>
+          <tbody>${itemsHtml}</tbody>
+        </table>
+        <div class="totals">
+          <div class="totals-row"><span>المجموع الفرعي:</span><span>${money(sub)}</span></div>
+          ${sub > totalVal ? `<div class="totals-row"><span>الخصم:</span><span>-${money(sub - totalVal)}</span></div>` : ""}
+          <div class="totals-row grand"><span>الإجمالي:</span><span>${money(totalVal)}</span></div>
+          ${payRows}
+          ${changeVal > 0 ? `<div class="totals-row"><span>الباقي:</span><span>${money(changeVal)}</span></div>` : ""}
+        </div>
+        ${customerLine ? `<table><tbody>${customerLine}</tbody></table>` : ""}
+        ${hasInstructions ? `<div class="photo-note">
+          📸 تنبيه هام: يرجى تصوير الفاتورة بهاتفك أو الاحتفاظ بها لتذكر مواعيد وجرعات الدواء بدقة.<br>مع تمنياتنا لكم بالشفاء العاجل!
+        </div>` : ""}
+        <div class="footer">شكراً لتعاملكم معنا<br>تِــريَــاق v2.0</div>
+      </body></html>`;
+
+    printHtml(receiptContent);
+  };
+
+  window.reprintLastReceipt = async () => {
+    let s = window.lastSaleReceipt;
+    if (!s) {
+      try {
+        const stored = JSON.parse(localStorage.getItem("triyaq_last_sale") || "null");
+        if (stored && stored.sale_id) {
+          s = { sale_id: stored.sale_id, invoice_no: stored.invoice_no };
+        }
+      } catch (e) {}
+    }
+    if (!s) {
+      try {
+        const d = await api("/api/dashboard");
+        const rec = (d.recent_sales || [])[0];
+        if (rec) s = { sale_id: rec.id, invoice_no: rec.invoice_no, total: rec.total };
+      } catch (e) {}
+    }
+    if (!s || !s.sale_id) {
+      toast("لا توجد فواتير سابقة لإعادة طباعتها", "warn");
+      return;
+    }
+    toast("جاري إعادة طباعة الفاتورة...");
+    printReceipt(s);
+  };
+
+  $("#checkout-btn").onclick = async () => {
+    if (!cart.length) { toast("السلة فارغة", "warn"); return; }
+    const rxItems = cart.filter(i => prescribedProducts.has(i.product_id));
+    if (rxItems.length > 0 && !(await showPopupConfirm("تحذير: تحتوي السلة على أدوية تتطلب وصفة طبية. هل تريد المتابعة؟", "تنبيه وصفة طبية"))) return;
+
+    // Recalculate to ensure accuracy
+    const sub = cart.reduce((s, i) => s + i.price * i.qty, 0);
+    const discType = $("#discount-type") ? $("#discount-type").value : "percent";
+    const discVal = Math.max(0, parseFloat($("#disc").value) || 0);
+    let disc = 0;
+    if (discType === "percent") {
+      disc = (sub * discVal) / 100;
+    } else {
+      disc = Math.min(discVal, sub);
+    }
+
+    // Points redemption
+    let pointsRedeemed = 0;
+    let pointsDisc = 0;
+    const ptsInput = $("#points-to-use");
+    if (ptsInput && selectedCustomer && loyaltySettings) {
+      const pts = parseFloat(ptsInput.value) || 0;
+      if (pts > 0) {
+        const minRedeem = parseFloat(loyaltySettings.loyalty_min_redeem || "50");
+        if (pts < minRedeem) {
+          toast(`الحد الأدنى لاستبدال النقاط هو ${minRedeem} نقطة`, "error");
+          return;
+        }
+        if (pts > (selectedCustomer.points || 0)) {
+          toast("عدد النقاط المطلوب أكبر من رصيد العميل", "error");
+          return;
+        }
+        pointsDisc = pts * parseFloat(loyaltySettings.loyalty_point_value || "0.5");
+        const maxPct = parseFloat(loyaltySettings.loyalty_max_discount_pct || "30");
+        pointsDisc = Math.min(pointsDisc, (sub * maxPct) / 100);
+        pointsRedeemed = pts;
+      }
+    }
+
+    const tot = Math.max(0, sub - disc - pointsDisc);
+    const paidTotal = window.paymentRows.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+
+    if (paidTotal <= 0) {
+      toast("يرجى إدخال المبلغ المدفوع من العميل أولاً", "warn");
+      const inputEl = $(".payment-amount-input[data-idx='0']");
+      if (inputEl) inputEl.focus();
+      return;
+    }
+
+    // Use small epsilon for floating point comparison
+    if (paidTotal + 0.01 < tot) {
+      toast(`المبلغ المدفوع (${money(paidTotal)}) أقل من الإجمالي المطلوب (${money(tot)})`, "error");
+      const inputEl = $(".payment-amount-input[data-idx='0']");
+      if (inputEl) inputEl.focus();
+      return;
+    }
+
+    const btn = $("#checkout-btn");
+    btn.disabled = true;
+    try {
+      const res = await api("/api/sales", {
+        method: "POST",
+        body: JSON.stringify({
+          items: cart.map((i) => ({ product_id: i.product_id, qty: i.qty, price: i.price, instructions: i.instructions || "" })),
+          discount: disc + pointsDisc,
+          paid: paidTotal,
+          payment_methods: window.paymentRows,
+          customer_id: selectedCustomer ? selectedCustomer.id : null,
+          points_redeemed: pointsRedeemed,
+        }),
+      });
+      toast(`تمت البيعة بنجاح! الفاتورة: ${res.invoice_no}`);
+
+      // Print receipt
+      printReceipt({ sale_id: res.sale_id, invoice_no: res.invoice_no, total: res.total, paid: res.paid, change: res.change, points_earned: res.points_earned, subtotal: sub, items: cart.map(i => ({ ...i })) });
+
+      cart = [];
+      manualAmountEdited = false;
+      window.paymentRows = [{method: 'cash', amount: 0}];
+      $("#disc").value = "0";
+      window.clearSelectedCustomer();
+      renderCart();
+      renderPayments();
+      loadProds($("#pos-search").value);
+    } catch (err) {
+      toast(err.message, "error");
+    } finally {
+      btn.disabled = false;
+    }
+  };
+
+  loadProds();
+  renderPayments();
+  loadCategories();
+});
+</script>
+</body>
+</html>

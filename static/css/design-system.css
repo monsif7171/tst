@@ -1,0 +1,12 @@
+/* ============================================
+   تِــريَــاق - Design System Enhancements v2.0
+   Non-breaking visual refinements
+   ============================================ */
+
+/* Enhancements for cards, buttons, tables without breaking desktop layout */
+.card {
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.card:hover {
+  box-shadow: var(--shadow-lg);
+}

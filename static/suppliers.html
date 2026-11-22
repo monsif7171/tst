@@ -1,0 +1,210 @@
+﻿<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="light">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تِــريَــاق — الموردون</title>
+<link rel="stylesheet" href="css/app.css?v=2.3">
+  <link rel="stylesheet" href="css/responsive.css">
+  <link rel="stylesheet" href="css/design-system.css">
+  <style>
+    .supplier-modal-body { max-height: 70vh; overflow-y: auto; }
+    .supplier-modal-body table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 6px 0 12px; }
+    .supplier-modal-body th { background: var(--bg); padding: 5px 8px; text-align: right; font-weight: 600; border-bottom: 2px solid var(--border); }
+    .supplier-modal-body td { padding: 4px 8px; border-bottom: 1px solid var(--border); }
+    .modal-section-title { font-size: 13px; font-weight: 700; color: var(--text); margin: 14px 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+    .modal-section-title:first-child { margin-top: 0; }
+    @media print {
+      .supplier-print-header { display: block !important; margin-bottom: 12px; }
+      .supplier-modal-body { max-height: none !important; overflow: visible !important; }
+      .supplier-modal-body table { border: 1px solid #ccc; width: 100% !important; }
+      .supplier-modal-body th, .supplier-modal-body td { border: 1px solid #ccc !important; padding: 4px 6px !important; }
+      .modal-section-title { font-weight: bold; margin-top: 10px; border-bottom: 1px solid #000; padding-bottom: 3px; }
+    }
+  </style>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<link rel="apple-touch-icon" href="img/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ترياق">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#f2572c"></head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="js/app.js?v=2.2"></script>
+<script>
+boot("الموردون", async (user, el) => {
+  el.innerHTML = `
+    <div class="toolbar">
+      <button class="btn primary" onclick="openAddSup()">${icon("plus")}<span>إضافة مورد جديد</span></button>
+    </div>
+    <div class="card" id="sup-table"></div>`;
+
+  async function load() {
+    $("#sup-table").innerHTML = tableSkeletonHTML(5, 5);
+    try {
+      const data = await api("/api/suppliers");
+      const sups = data.suppliers || [];
+      $("#sup-table").innerHTML = tableHTML([
+        { label: "المورد", key: "name" },
+        { label: "الهاتف", key: "phone" },
+        { label: "البريد", key: "email" },
+        { label: "الديون المستحقة", key: "due", num: true, render: (r) => `<span class="pill ${r.due > 0 ? 'danger' : 'ok'}">${money(r.due)}</span>${r.due_usd > 0 ? `<small style="display:block;font-size:11px;color:var(--muted)">$${fmt(r.due_usd)}</small>` : ""}` },
+        { label: "إجراءات", render: (r) => `
+          <button type="button" class="btn sm primary" onclick="viewSup(${r.id}, '${esc(r.name)}')">${icon("chart")} ملف المورد</button>
+          <button type="button" class="btn sm" onclick="paySup(${r.id}, '${esc(r.name)}')">${icon("cash")} تسديد</button>` },
+      ], sups, "لا يوجد موردون");
+    } catch (e) { toast(e.message, "error"); }
+  }
+
+  window.viewSup = async (sid, sname) => {
+    try {
+      const data = await api(`/api/suppliers/${sid}/detail`);
+      const sup = data.supplier || {};
+      const due = data.due || 0;
+      const dueUsd = data.due_usd || 0;
+      const purchases = data.purchases || [];
+      const payments = data.payments || [];
+
+      const purchaseRows = purchases.length
+        ? purchases.map(p => `
+            <tr>
+              <td>${esc(p.invoice_no)}</td>
+              <td>${esc((p.purchase_date || "").slice(0, 10))}</td>
+              <td style="text-align:left">${money(p.total)}</td>
+              <td style="text-align:left">${money(p.paid)}</td>
+              <td style="text-align:left"><span class="pill ${p.total - p.paid > 0 ? 'danger' : 'ok'}">${money(p.total - p.paid)}</span></td>
+            </tr>`).join("")
+        : '<tr><td colspan="5" style="text-align:center;color:#999">لا توجد فواتير</td></tr>';
+
+      const paymentRows = payments.length
+        ? payments.map(p => `
+            <tr>
+              <td>${esc((p.pay_date || "").slice(0, 10))}</td>
+              <td style="text-align:left">${money(p.amount)}</td>
+              <td>${esc(p.note || '-')}</td>
+            </tr>`).join("")
+        : '<tr><td colspan="3" style="text-align:center;color:#999">لا توجد مدفوعات</td></tr>';
+
+      modal(`ملف المورد: ${sname}`, `
+        <div class="supplier-modal-body">
+          <div class="supplier-print-header" style="display:none">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:12px">
+              <div style="display:flex; align-items:center; gap:8px">
+                <img src="img/logo.png" alt="ترياق" style="width:36px; height:36px; object-fit:contain">
+                <div>
+                  <h2 style="margin:0; font-size:18px">تِــريَــاق — نظام إدارة الصيدليات</h2>
+                  <p style="margin:2px 0; font-size:11px; color:#555">كشف حساب مورد معتمد</p>
+                </div>
+              </div>
+              <div style="text-align:left; font-size:11px; color:#333">
+                <div><b>التاريخ:</b> ${new Date().toLocaleDateString("ar-EG")}</div>
+                <div><b>المورد:</b> ${esc(sname)}</div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-section-title">معلومات التواصل</div>
+          <div class="table-wrap">
+          <table style="margin:4px 0">
+            <tr><th style="width:30%">الهاتف</th><td>${esc(sup.phone || '-')}</td></tr>
+            <tr><th>البريد الإلكتروني</th><td>${esc(sup.email || '-')}</td></tr>
+            <tr><th>العنوان</th><td>${esc(sup.address || '-')}</td></tr>
+            <tr><th>الرصيد الافتتاحي</th><td>${money(sup.balance || 0)}</td></tr>
+          </table>
+          </div>
+
+          <div class="modal-section-title">ملخص الحساب</div>
+          <div class="table-wrap">
+          <table style="margin:4px 0">
+            <tr><th style="width:30%">إجمالي الديون المستحقة</th><td><span class="pill ${due > 0 ? 'danger' : 'ok'}" style="font-size:14px">${money(due)} ${dueUsd > 0 ? `<small style="margin-inline-start:6px;font-size:12px;opacity:0.85">($${fmt(dueUsd)})</small>` : ''}</span></td></tr>
+          </table>
+          </div>
+
+          <div class="modal-section-title">سجل فواتير المشتريات (${purchases.length})</div>
+          <div class="table-wrap">
+          <table>
+            <thead><tr><th>رقم الفاتورة</th><th>التاريخ</th><th>الإجمالي</th><th>المدفوع</th><th>المتبقي</th></tr></thead>
+            <tbody>${purchaseRows}</tbody>
+          </table>
+          </div>
+
+          <div class="modal-section-title">سجل المدفوعات (${payments.length})</div>
+          <div class="table-wrap">
+          <table>
+            <thead><tr><th>التاريخ</th><th>المبلغ</th><th>ملاحظات</th></tr></thead>
+            <tbody>${paymentRows}</tbody>
+          </table>
+          </div>
+
+          <div class="no-print" style="display:flex; gap:8px; margin-top:12px">
+            <button type="button" class="btn" onclick="window.print()">${icon("print")} طباعة كشف</button>
+            <button type="button" class="btn primary" onclick="document.querySelector('.modal-backdrop')?.closeModal?.(); paySup(${sup.id}, '${esc(sname)}')">${icon("cash")} تسجيل دفعة</button>
+          </div>
+        </div>
+      `, null, "إغلاق");
+    } catch (e) { toast(e.message, "error"); }
+  };
+
+  window.openAddSup = () => {
+    modal("إضافة مورد جديد", `
+      <div class="form-grid">
+        <div class="field"><label>اسم المورد *</label><input type="text" name="name" required></div>
+        <div class="field"><label>الهاتف</label><input type="text" name="phone"></div>
+        <div class="field"><label>البريد الإلكتروني</label><input type="email" name="email"></div>
+        <div class="field"><label>العنوان</label><input type="text" name="address"></div>
+        <div class="field"><label>رصيد افتتاحي (دائن)</label><input type="number" step="0.01" name="balance" value="0"></div>
+      </div>
+    `, async (fd) => {
+      await api("/api/suppliers", { method: "POST", body: JSON.stringify(fd) });
+      toast("تمت إضافة المورد بنجاح");
+      load();
+    });
+  };
+
+  window.paySup = async (sid, sname) => {
+    let rate = 1.0;
+    try {
+      const rateRes = await api("/api/settings/exchange-rate");
+      if (rateRes && rateRes.rate) rate = parseFloat(rateRes.rate);
+    } catch (e) {}
+
+    const back = modal(`تسجيل دفعة للمورد: ${sname}`, `
+      <div style="background:var(--bg-secondary); padding:8px 12px; border-radius:8px; margin-bottom:12px; border:1px solid var(--border); font-size:12px;">
+        سعر الصرف المطبق: <b style="color:var(--primary)">1$ = ${fmt(rate)} ${CURRENCY}</b>
+      </div>
+      <div class="field">
+        <label>المبلغ المدفوع بالعملة المحلية (${CURRENCY}) *</label>
+        <input type="number" step="0.01" name="amount" id="pay-amt-loc" required autofocus>
+      </div>
+      <div class="field">
+        <label>المعادل بالدولار ($)</label>
+        <input type="number" step="0.01" name="amount_usd" id="pay-amt-usd">
+      </div>
+      <div class="field"><label>ملاحظات</label><input type="text" name="note" placeholder="رقم السند أو الحوالة"></div>
+    `, async (fd) => {
+      fd.rate = rate;
+      await api(`/api/suppliers/${sid}/payments`, { method: "POST", body: JSON.stringify(fd) });
+      toast("تم تسجيل الدفعة بنجاح");
+      load();
+    }, "تسجيل الدفعة");
+
+    const locInp = $("#pay-amt-loc", back);
+    const usdInp = $("#pay-amt-usd", back);
+    if (locInp && usdInp) {
+      locInp.oninput = () => {
+        const val = parseFloat(locInp.value) || 0;
+        if (val > 0 && rate > 0) usdInp.value = (val / rate).toFixed(2);
+      };
+      usdInp.oninput = () => {
+        const val = parseFloat(usdInp.value) || 0;
+        if (val > 0) locInp.value = (val * rate).toFixed(2);
+      };
+    }
+  };
+
+  load();
+});
+</script>
+</body>
+</html>
+

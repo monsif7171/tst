@@ -1,0 +1,410 @@
+﻿<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="light">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تِــريَــاق — فواتير المشتريات</title>
+<link rel="stylesheet" href="css/app.css?v=2.3">
+  <link rel="stylesheet" href="css/responsive.css">
+  <link rel="stylesheet" href="css/design-system.css">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<link rel="apple-touch-icon" href="img/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ترياق">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#f2572c"></head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="js/app.js?v=2.2"></script>
+<script>
+boot("فواتير المشتريات", async (user, el) => {
+  const isAdmin = user.role === "admin";
+  let branches = [];
+  if (isAdmin) {
+    try {
+      branches = (await api("/api/branches")).branches || [];
+    } catch (e) { console.error(e); }
+  }
+
+  el.innerHTML = `
+    <div class="toolbar" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <button class="btn primary" onclick="openAddPurchase()">${icon("plus")}<span>تسجيل فاتورة شراء جديدة</span></button>
+      ${isAdmin && branches.length > 0 ? `
+        <div class="field" style="width:200px; margin:0;">
+          <select id="pur-branch-filter" aria-label="تصفية حسب الفرع">
+            <option value="">كل الفروع</option>
+            ${branches.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join("")}
+          </select>
+        </div>
+      ` : ""}
+    </div>
+    <div class="card" id="purchases-table"></div>`;
+
+  if ($("#pur-branch-filter")) {
+    $("#pur-branch-filter").onchange = () => load();
+  }
+
+  async function load() {
+    $("#purchases-table").innerHTML = tableSkeletonHTML(6, 5);
+    try {
+      const bf = $("#pur-branch-filter") ? $("#pur-branch-filter").value : "";
+      const url = bf ? `/api/purchases?branch_id=${encodeURIComponent(bf)}` : "/api/purchases";
+      const data = await api(url);
+      const purs = data.purchases || [];
+      $("#purchases-table").innerHTML = tableHTML([
+        { label: "رقم الفاتورة", key: "invoice_no" },
+        { label: "الفرع", render: (r) => `<span class="pill info">${esc(r.branch_name || "-")}</span>` },
+        { label: "المورد", key: "supplier_name" },
+        { label: "التاريخ", render: (r) => esc((r.purchase_date || "").slice(0, 16)) },
+        { label: "الإجمالي", key: "total", num: true, render: (r) => `<span>${money(r.total)}</span>${r.total_usd > 0 ? `<small style="display:block;font-size:11px;color:var(--muted)">$${fmt(r.total_usd)}</small>` : ""}` },
+        { label: "المدفوع", key: "paid", num: true, render: (r) => money(r.paid) },
+        { label: "المتبقي", render: (r) => `<span class="pill ${r.total - r.paid > 0 ? 'danger' : 'ok'}">${money(r.total - r.paid)}</span>` },
+        { label: "إجراءات", render: (r) => `
+          <button type="button" class="btn sm" onclick="printInvoice(${r.id})">${icon("print")} طباعة</button>
+          <button type="button" class="btn sm" onclick="showItems(${r.id}, '${esc(r.invoice_no)}')">${icon("list")} تفاصيل</button>` },
+      ], purs, "لا توجد فواتير شراء");
+    } catch (e) { toast(e.message, "error"); }
+  }
+
+  window.printInvoice = async (id) => {
+    try {
+      const res = await api(`/api/purchases/${id}`);
+      const p = res.purchase;
+      const items = res.items || [];
+      const date = (p.purchase_date || "").slice(0, 16);
+      const rowsHtml = items.map(it => `
+        <tr>
+          <td>${esc(it.product_name || `منتج #${it.product_id}`)}</td>
+          <td style="text-align:center">${fmt(it.qty)}</td>
+          <td style="text-align:left">${money(it.cost)}</td>
+          <td style="text-align:left">${money(it.qty * it.cost)}</td>
+        </tr>`).join("");
+      const html = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">
+<style>body{font-family:sans-serif;padding:20px;direction:rtl;max-width:700px;margin:0 auto}
+h2{text-align:center;margin:0 0 4px;font-size:18px}
+.info{text-align:center;font-size:12px;color:#555;margin-bottom:12px}
+table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13px}
+th{border-bottom:1px solid #000;padding:4px 8px;text-align:right;font-weight:bold}
+td{padding:4px 8px;border-bottom:1px dashed #ccc}
+.totals{border-top:1px solid #000;padding-top:8px;font-size:13px}
+.totals-row{display:flex;justify-content:space-between;padding:3px 0}
+.totals-row.grand{font-size:15px;font-weight:bold;border-top:1px solid #000;margin-top:4px;padding-top:4px}
+.footer{text-align:center;margin-top:16px;font-size:11px;color:#999}</style><link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<link rel="apple-touch-icon" href="img/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ترياق">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#f2572c"></head>
+<body><div class="info">تِــريَــاق — نظام الصيدلية</div>
+<h2>فاتورة مشتريات</h2>
+<div class="info">رقم الفاتورة: ${esc(p.invoice_no)}&nbsp;&nbsp;|&nbsp;&nbsp;الفرع: ${esc(p.branch_name || "-")}&nbsp;&nbsp;|&nbsp;&nbsp;المورد: ${esc(p.supplier_name || "-")}&nbsp;&nbsp;|&nbsp;&nbsp;التاريخ: ${esc(date)}</div>
+<table>
+<thead><tr><th style="width:50%">المنتج</th><th style="width:15%;text-align:center">الكمية</th><th style="width:17%;text-align:left">سعر الشراء</th><th style="width:18%;text-align:left">الإجمالي</th></tr></thead>
+<tbody>${rowsHtml}</tbody>
+</table>
+<div class="totals">
+<div class="totals-row"><span>المجموع الفرعي:</span><span>${money(p.subtotal)}</span></div>
+${p.discount > 0 ? `<div class="totals-row"><span>الخصم:</span><span>${money(p.discount)}</span></div>` : ""}
+${p.extra_cost > 0 ? `<div class="totals-row"><span>تكاليف إضافية:</span><span>${money(p.extra_cost)}</span></div>` : ""}
+<div class="totals-row grand"><span>الإجمالي:</span><span>${money(p.total)}</span></div>
+<div class="totals-row"><span>المدفوع:</span><span>${money(p.paid)}</span></div>
+<div class="totals-row"><span>المتبقي:</span><span>${money(p.total - p.paid)}</span></div>
+</div>
+${p.note ? `<div class="info" style="margin-top:8px">${esc(p.note)}</div>` : ""}
+<div class="footer">شكراً لتعاملكم معنا</div>
+</body></html>`;
+      printHtml(html);
+    } catch (e) { toast(e.message, "error"); }
+  };
+
+  window.showItems = async (id, invNo) => {
+    try {
+      const res = await api(`/api/purchases/${id}`);
+      const items = res.items || [];
+      const rowsHtml = items.map(it => `
+        <tr>
+          <td>${esc(it.product_name || `منتج #${it.product_id}`)}</td>
+          <td style="text-align:center">${fmt(it.qty)}</td>
+          <td style="text-align:center">${esc(it.batch_no || "-")}</td>
+          <td>${esc((it.expiry_date || "-").slice(0, 10))}</td>
+          <td style="text-align:left">${money(it.cost)}</td>
+          <td style="text-align:left">${money(it.qty * it.cost)}</td>
+        </tr>`).join("");
+      modal(`تفاصيل الفاتورة: ${invNo}`, `
+        <div class="table-wrap">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;margin:8px 0">
+          <thead><tr><th style="border-bottom:1px solid var(--border);padding:6px;text-align:right">المنتج</th><th style="border-bottom:1px solid var(--border);padding:6px;text-align:center">الكمية</th><th style="border-bottom:1px solid var(--border);padding:6px;text-align:center">رقم التشغيلة</th><th style="border-bottom:1px solid var(--border);padding:6px;text-align:center">تاريخ الصلاحية</th><th style="border-bottom:1px solid var(--border);padding:6px;text-align:left">سعر الشراء</th><th style="border-bottom:1px solid var(--border);padding:6px;text-align:left">الإجمالي</th></tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px" class="no-print">
+          <button type="button" class="btn primary" onclick="printInvoice(${id})">${icon("print")} طباعة الفاتورة</button>
+        </div>
+      `, null, "إغلاق");
+    } catch (e) { toast(e.message, "error"); }
+  };
+
+  window.openAddPurchase = async () => {
+    try {
+      const [supsRes, prodsRes, rateRes] = await Promise.all([
+        api("/api/suppliers"),
+        api("/api/products"),
+        api("/api/settings/exchange-rate").catch(() => ({ rate: 1.0 }))
+      ]);
+      const sups = supsRes.suppliers || [];
+      const prods = prodsRes.products || [];
+      const currentRate = parseFloat(rateRes.rate) || 1.0;
+      if (!sups.length) { toast("يرجى إضافة مورد أولاً", "warn"); return; }
+      if (!prods.length) { toast("يرجى إضافة منتجات أولاً", "warn"); return; }
+
+      const firstCost = prods[0] ? (prods[0].purchase_price || 0) : 0;
+      const firstCostUsd = prods[0] ? (prods[0].purchase_price_usd || (currentRate > 0 ? (firstCost / currentRate).toFixed(2) : 0)) : 0;
+      const defaultBranchId = ($("#pur-branch-filter") && $("#pur-branch-filter").value) || user.branch_id || (branches[0] && branches[0].id) || "";
+
+      const back = modal("تسجيل فاتورة شراء جديدة", `
+        <div style="background:var(--bg-secondary); padding:8px 12px; border-radius:8px; margin-bottom:12px; border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; font-size:12px;">
+          <span>سعر الصرف المعتمد للفاتورة: <b style="color:var(--primary); font-size:13px;">1$ = ${fmt(currentRate)} ${CURRENCY}</b></span>
+          <span style="color:var(--muted)">يمكنك إدخال تكلفة الصنف بالدولار أو بالعملة المحلية مباشرة</span>
+        </div>
+        <div class="form-grid" style="margin-bottom:12px">
+          ${isAdmin && branches.length > 0 ? `
+            <div class="field"><label>الفرع المستلم للمخزون *</label>
+              <select name="branch_id" required>
+                ${branches.map((b) => `<option value="${b.id}" ${String(b.id) === String(defaultBranchId) ? "selected" : ""}>${esc(b.name)}</option>`).join("")}
+              </select>
+            </div>
+          ` : ""}
+          <div class="field"><label>المورد *</label><select name="supplier_id">${sups.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("")}</select></div>
+          <div class="field"><label>رقم الفاتورة (اختياري)</label><input type="text" name="invoice_no" placeholder="تلقائي"></div>
+          <div class="field"><label>المدفوع من الفاتورة (${CURRENCY})</label>
+            <div style="display:flex;gap:6px">
+              <input type="number" step="0.01" min="0" name="paid" id="pur-paid" value="${firstCost}">
+              <button type="button" class="btn sm" id="pur-fill-paid" title="نسخ الإجمالي">كامل</button>
+            </div>
+          </div>
+        </div>
+        <div style="border-top:1px solid var(--border); padding-top:10px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center">
+          <b style="font-size:13px">أصناف الفاتورة</b>
+          <button type="button" class="btn sm" id="add-pur-item-btn">${icon("plus")} إضافة صنف آخر</button>
+        </div>
+        <div style="background:var(--bg-secondary); padding:8px 12px; border-radius:8px; margin-bottom:10px; border:1px solid var(--border); display:flex; gap:8px; align-items:center;">
+          <span style="font-size:12px; font-weight:700; white-space:nowrap; display:flex; align-items:center; gap:4px">
+            ${icon("barcode")} مسح صنف:
+          </span>
+          <div class="input-camera-wrap" style="flex:1;">
+            <input type="text" id="pur-quick-barcode" placeholder="امسح باركود الصنف أو اكتبه لإدراجه مباشرة أو جلبه من المستودع..." autocomplete="off">
+            <button type="button" class="btn-camera-scan" title="مسح باركود/QR بالكاميرا" onclick="openCameraScanner(c => { const inp = $('#pur-quick-barcode'); if(inp){ inp.value = c; $('#btn-pur-scan-add')?.click(); } }, {title: 'مسح باركود الشراء بالكاميرا'})">${icon("camera")}</button>
+          </div>
+          <button type="button" class="btn sm primary" id="btn-pur-scan-add">إدراج</button>
+        </div>
+        <div id="pur-items-list" style="display:flex; flex-direction:column; gap:10px; max-height:42vh; overflow-y:auto; padding:2px"></div>
+        <div style="margin-top:12px; padding:10px 14px; background:var(--bg-secondary); border-radius:10px; display:flex; justify-content:space-between; align-items:center; font-weight:700">
+          <span>إجمالي الفاتورة:</span>
+          <span id="pur-grand-total" style="color:var(--primary); font-size:16px">0.00</span>
+        </div>
+      `, async (fd) => {
+        const rowsEls = $$(".pur-item-row", back);
+        if (!rowsEls.length) throw new Error("أضف صنفاً واحداً على الأقل");
+        const items = rowsEls.map((r) => ({
+          product_id: $(".pur-prod", r).value,
+          qty: parseFloat($(".pur-qty", r).value) || 0,
+          cost: parseFloat($(".pur-cost", r).value) || 0,
+          cost_usd: parseFloat($(".pur-cost-usd", r)?.value) || 0,
+          batch_no: $(".pur-batch", r).value.trim() || "DEFAULT",
+          expiry_date: $(".pur-exp", r).value || null,
+        })).filter((it) => it.qty > 0);
+        if (!items.length) throw new Error("يرجى إدخال كميات صحيحة للأصناف");
+
+        await api("/api/purchases", {
+          method: "POST",
+          body: JSON.stringify({
+            branch_id: fd.branch_id ? parseInt(fd.branch_id, 10) : undefined,
+            supplier_id: fd.supplier_id,
+            invoice_no: fd.invoice_no,
+            paid: parseFloat(fd.paid) || 0,
+            rate: currentRate,
+            items,
+          }),
+        });
+        toast("تم تسجيل فاتورة الشراء بنجاح");
+        load();
+      });
+
+      const modalBox = $(".modal", back);
+      if (modalBox) modalBox.style.width = "min(900px, 100%)";
+
+      const listEl = $("#pur-items-list", back);
+      let paidTouched = false;
+      $("#pur-paid", back).addEventListener("input", () => { paidTouched = true; });
+
+      const calcPurTotal = () => {
+        let total = 0;
+        $$(".pur-item-row", back).forEach((r) => {
+          const q = parseFloat($(".pur-qty", r).value) || 0;
+          const c = parseFloat($(".pur-cost", r).value) || 0;
+          total += q * c;
+        });
+        const totalUsd = currentRate > 0 ? (total / currentRate).toFixed(2) : 0;
+        $("#pur-grand-total", back).innerHTML = `${money(total)} <span style="font-size:13px; color:var(--muted); font-weight:normal; margin-inline-start:6px">($${totalUsd})</span>`;
+        if (!paidTouched) {
+          $("#pur-paid", back).value = Number(total.toFixed(2));
+        }
+        return total;
+      };
+
+      $("#pur-fill-paid", back).onclick = () => {
+        paidTouched = false;
+        calcPurTotal();
+      };
+
+      let currentProds = prods;
+      const refreshProdOptions = () => {
+        return currentProds.map((p) => `<option value="${p.id}" data-cost="${p.purchase_price || 0}" data-cost-usd="${p.purchase_price_usd || 0}">${esc(p.name)}</option>`).join("");
+      };
+
+      const addRow = (selectedProdId = null, customCost = null, customCostUsd = null) => {
+        const row = document.createElement("div");
+        row.className = "pur-item-row";
+        row.style.cssText = "display:grid; grid-template-columns: 1.6fr 0.7fr 0.9fr 1fr 0.9fr 1fr auto; gap:8px; align-items:end; background:var(--bg); padding:10px; border-radius:10px; border:1px solid var(--border);";
+        const initialCost = customCost !== null ? customCost : firstCost;
+        const initialCostUsd = customCostUsd !== null ? customCostUsd : (firstCostUsd || (currentRate > 0 ? (initialCost / currentRate).toFixed(2) : 0));
+        row.innerHTML = `
+          <div class="field"><label>الدواء *</label><select class="pur-prod">${refreshProdOptions()}</select></div>
+          <div class="field"><label>الكمية *</label><input type="number" step="0.01" min="0.01" class="pur-qty" value="1" required></div>
+          <div class="field"><label>التكلفة ($)</label><input type="number" step="0.01" min="0" class="pur-cost-usd" value="${initialCostUsd}"></div>
+          <div class="field"><label>التكلفة (${CURRENCY}) *</label><input type="number" step="0.01" min="0" class="pur-cost" value="${initialCost}" required></div>
+          <div class="field"><label>التشغيلة</label><input type="text" class="pur-batch" value="DEFAULT"></div>
+          <div class="field"><label>الصلاحية</label><input type="date" class="pur-exp"></div>
+          <button type="button" class="btn ghost sm pur-del" title="حذف الصنف" style="height:36px">${icon("trash")}</button>
+        `;
+        const prodSel = $(".pur-prod", row);
+        if (selectedProdId) {
+          prodSel.value = String(selectedProdId);
+        }
+        const costInp = $(".pur-cost", row);
+        const costUsdInp = $(".pur-cost-usd", row);
+        const qtyInp = $(".pur-qty", row);
+        prodSel.onchange = () => {
+          const opt = prodSel.selectedOptions[0];
+          if (opt) {
+            const cUsd = parseFloat(opt.dataset.costUsd) || 0;
+            const cLoc = parseFloat(opt.dataset.cost) || 0;
+            if (cUsd > 0) {
+              costUsdInp.value = cUsd;
+              costInp.value = (cUsd * currentRate).toFixed(2);
+            } else if (cLoc > 0) {
+              costInp.value = cLoc;
+              costUsdInp.value = currentRate > 0 ? (cLoc / currentRate).toFixed(2) : 0;
+            }
+            calcPurTotal();
+          }
+        };
+        qtyInp.oninput = calcPurTotal;
+        costInp.oninput = () => {
+          const loc = parseFloat(costInp.value) || 0;
+          if (loc > 0 && currentRate > 0) costUsdInp.value = (loc / currentRate).toFixed(2);
+          calcPurTotal();
+        };
+        costUsdInp.oninput = () => {
+          const usd = parseFloat(costUsdInp.value) || 0;
+          if (usd > 0) costInp.value = (usd * currentRate).toFixed(2);
+          calcPurTotal();
+        };
+        $(".pur-del", row).onclick = () => {
+          if ($$(".pur-item-row", back).length <= 1) {
+            toast("يجب أن تحتوي الفاتورة على صنف واحد على الأقل", "warn");
+            return;
+          }
+          row.remove();
+          calcPurTotal();
+        };
+        listEl.appendChild(row);
+        calcPurTotal();
+      };
+
+      const handleScanOrAdd = async () => {
+        const qInp = $("#pur-quick-barcode", back);
+        const code = (qInp.value || "").trim();
+        if (!code) return;
+
+        // 1. Check local products by barcode or exact name
+        const match = currentProds.find(p => (p.barcode && p.barcode === code) || (p.name && p.name.toLowerCase() === code.toLowerCase()));
+        if (match) {
+          let existingRow = null;
+          $$(".pur-item-row", back).forEach(r => {
+            if ($(".pur-prod", r).value === String(match.id)) existingRow = r;
+          });
+          if (existingRow) {
+            const q = $(".pur-qty", existingRow);
+            q.value = (parseFloat(q.value) || 0) + 1;
+            calcPurTotal();
+            toast(`تمت زيادة كمية: ${match.name}`);
+          } else {
+            addRow(match.id, match.purchase_price);
+            toast(`تم إدراج: ${match.name}`);
+          }
+          qInp.value = "";
+          qInp.focus();
+          return;
+        }
+
+        // 2. Not found locally: check external OpenFDA
+        qInp.disabled = true;
+        try {
+          const res = await api(`/api/products/lookup-external?barcode=${encodeURIComponent(code)}&name=${encodeURIComponent(code)}`);
+          if (res.found && res.product) {
+            const ext = res.product;
+            const ok = await showPopupConfirm(
+              `الدواء "${ext.name}" (${ext.strength || ""}) متوفر في مستودع OpenFDA ولكنه غير مسجل محلياً.\nهل تريد استيراده للصيدلية وإدراجه في الفاتورة؟`,
+              "استيراد دواء جديد للفاتورة"
+            );
+            if (ok) {
+              const impRes = await api("/api/products/quick-import-external", {
+                method: "POST",
+                body: JSON.stringify(Object.assign({}, ext, { barcode: code, purchase_price: 0, sale_price: 0 }))
+              });
+              if (impRes.ok && impRes.product) {
+                currentProds.push(impRes.product);
+                $$(".pur-prod", back).forEach(sel => {
+                  const currVal = sel.value;
+                  sel.innerHTML = refreshProdOptions();
+                  sel.value = currVal;
+                });
+                addRow(impRes.product.id, impRes.product.purchase_price || 0);
+                toast(`تم استيراد ${impRes.product.name} وإدراجه في الفاتورة!`);
+              }
+            }
+          } else {
+            toast("لم يتم العثور على الصنف محلياً أو في المستودع العام", "warn");
+          }
+        } catch (e) {
+          toast(e.message, "error");
+        } finally {
+          qInp.disabled = false;
+          qInp.value = "";
+          qInp.focus();
+        }
+      };
+
+      $("#btn-pur-scan-add", back).onclick = handleScanOrAdd;
+      $("#pur-quick-barcode", back).addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          handleScanOrAdd();
+        }
+      });
+
+      $("#add-pur-item-btn", back).onclick = addRow;
+      addRow();
+    } catch (e) { toast(e.message, "error"); }
+  };
+
+  load();
+});
+</script>
+</body>
+</html>
+

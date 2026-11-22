@@ -1,0 +1,1115 @@
+﻿<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="light">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>تِــريَــاق — الأدوية والمخزون</title>
+<link rel="stylesheet" href="css/app.css?v=2.3">
+  <link rel="stylesheet" href="css/responsive.css">
+  <link rel="stylesheet" href="css/design-system.css">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<link rel="apple-touch-icon" href="img/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ترياق">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#f2572c"></head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="js/app.js?v=2.2"></script>
+<script>
+boot("الأدوية والمخزون", async (user, el) => {
+  const isAdmin = user.role === "admin";
+  let branches = [];
+  try {
+    branches = (await api("/api/branches")).branches || [];
+  } catch (e) { console.error(e); }
+
+  el.innerHTML = `
+  <div class="toolbar" style="flex-wrap:wrap; gap:8px;">
+    <div class="search has-camera">
+      ${icon("search")}
+      <input type="text" id="p-search" placeholder="ابحث باسم الدواء، المادة الفعالة، أو الباركود...">
+      <button type="button" class="btn-camera-scan" id="btn-p-search-camera" title="مسح باركود/QR بالكاميرا للبحث" onclick="openProductSearchScanner()">${icon("camera")}</button>
+    </div>
+    ${isAdmin && branches.length > 0 ? `
+      <div class="field" style="width:170px; margin:0;">
+        <select id="p-branch-filter" aria-label="تصفية حسب الفرع">
+          <option value="">كل الفروع (إجمالي)</option>
+          ${branches.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join("")}
+        </select>
+      </div>
+    ` : ""}
+    <div class="field" style="width:170px; margin:0;">
+      <select id="p-category-filter">
+        <option value="">كل التصنيفات</option>
+      </select>
+    </div>
+    <button class="btn primary" onclick="openAddModal()">${icon("plus")}<span>إضافة دواء جديد</span></button>
+    <button class="btn" onclick="openGlobalCatalogModal()">${icon("globe")}<span>المستودع العام</span></button>
+    <button class="btn" onclick="openImportModal()">${icon("upload")}<span>استيراد</span></button>
+    <button class="btn" onclick="exportProducts('xlsx')">${icon("download")}<span>تصدير Excel</span></button>
+    <button class="btn" onclick="exportProducts('csv')">${icon("download")}<span>تصدير CSV</span></button>
+    <button class="btn" onclick="showLowStockAlerts()">${icon("alert")}<span>النواقص</span></button>
+    <button class="btn" onclick="showExpiryAlerts()">${icon("bell")}<span>الصلاحية</span></button>
+  </div>
+  <div class="card" id="p-table-wrap"></div>`;
+
+  let searchTimer = null;
+  let loadSeq = 0;
+  async function load(search = "", category = "") {
+    const seq = ++loadSeq;
+    $("#p-table-wrap").innerHTML = tableSkeletonHTML(10, 6);
+    try {
+      const bf = $("#p-branch-filter") ? $("#p-branch-filter").value : "";
+      const url = `/api/products?search=${encodeURIComponent(search)}&category=${encodeURIComponent(category)}${bf ? `&branch_id=${encodeURIComponent(bf)}` : ""}`;
+      const data = await api(url);
+      if (seq !== loadSeq) return; // Ignore stale responses
+      const prods = data.products || [];
+      $("#p-table-wrap").innerHTML = tableHTML([
+        { label: "الدواء", key: "name" },
+        { label: "المادة الفعالة", key: "generic_name" },
+        { label: "الباركود", key: "barcode", render: (r) => `<span class="mono">${esc((r.barcode || "").slice(0, 12))}</span>` },
+        { label: "التركيز/الشكل", render: (r) => `${esc(r.strength || "")} ${esc(r.form || "")}` },
+        { label: "سعر الشراء", key: "purchase_price", num: true, render: (r) => `<span>${money(r.purchase_price)}</span>${r.purchase_price_usd > 0 ? `<small style="display:block;font-size:11px;color:var(--muted)">$${fmt(r.purchase_price_usd)}</small>` : ""}` },
+        { label: "سعر البيع", key: "sale_price", num: true, render: (r) => `<span>${money(r.sale_price)}</span>${r.sale_price_usd > 0 ? `<small style="display:block;font-size:11px;color:var(--primary);font-weight:600;">$${fmt(r.sale_price_usd)}</small>` : ""}` },
+        { label: "المتوفر", key: "stock", num: true, render: (r) => `<span class="pill ${r.stock <= r.min_qty ? "danger" : "ok"}">${fmt(r.stock)} ${esc(r.unit || "")}</span>` },
+        { label: "الحد الأدنى", key: "min_qty", num: true, render: (r) => `
+          <span>${fmt(r.min_qty)}</span>
+          ${r.custom_branch_min_qty !== null && r.custom_branch_min_qty !== undefined ? `<small style="display:block;font-size:10px;color:var(--primary)">مخصص للفرع</small>` : ""}
+        ` },
+        { label: "التصنيف", key: "category", render: (r) => r.category ? `<span class="pill info">${esc(r.category)}</span>` : `<span class="sub">بدون</span>` },
+        { label: "إجراءات", render: (r) => `
+          <button type="button" class="btn sm" onclick="showBranchStockModal(${r.id})" title="أرصدة الفروع وحدود الطلب والبدائل">${icon("building")} الفروع</button>
+          <button type="button" class="btn sm" onclick="showBarcode(${r.id}, \`${esc(r.barcode || "")}\`)" title="عرض الباركود">${icon("barcode")} باركود</button>
+          <button type="button" class="btn sm" onclick="editProd(${r.id})" title="تعديل الدواء" aria-label="تعديل الدواء">${icon("edit")}</button>
+          <button type="button" class="btn sm ghost danger" onclick="deleteProd(${r.id})" title="حذف الدواء" aria-label="حذف الدواء">${icon("trash")}</button>
+        `},
+      ], prods, "لا توجد أدوية مسجلة");
+    } catch (err) {
+      if (seq === loadSeq) {
+        console.error("Failed to load products:", err);
+      }
+    }
+  }
+
+  async function loadCategories() {
+    try {
+      const data = await api(`/api/categories`);
+      const cats = data.categories || [];
+      $("#p-category-filter").innerHTML = `<option value="">كل التصنيفات</option>` + cats.map((c) =>
+        `<option value="${esc(c.name)}">${esc(c.name)}</option>`
+      ).join("");
+    } catch (err) {
+      console.error("Failed to load categories:", err);
+      $("#p-category-filter").innerHTML = `<option value="">كل التصنيفات (خطأ في تحميل الفئات)</option>`;
+    }
+  }
+
+  window.showLowStockAlerts = async () => {
+    const bf = $("#p-branch-filter") ? $("#p-branch-filter").value : "";
+    const back = modal("تنبيهات النواقص وحد إعادة الطلب لكل فرع", `
+      ${isAdmin && branches.length > 0 ? `
+        <div class="field" style="margin-bottom:12px; max-width:260px;">
+          <label>تصفية حسب الفرع</label>
+          <select id="low-stock-branch-sel">
+            <option value="">كل الفروع</option>
+            ${branches.map(b => `<option value="${b.id}" ${String(b.id) === String(bf) ? "selected" : ""}>${esc(b.name)}</option>`).join("")}
+          </select>
+        </div>
+      ` : ""}
+      <div id="low-stock-modal-body" style="min-height:120px; max-height:60vh; overflow-y:auto;"></div>
+    `, null, "إغلاق");
+
+    const modalBox = $(".modal", back);
+    if (modalBox) modalBox.style.width = "min(720px, 100%)";
+    const bodyEl = $("#low-stock-modal-body", back);
+    const branchSel = $("#low-stock-branch-sel", back);
+
+    const loadLow = async () => {
+      bodyEl.innerHTML = '<div class="empty">جارٍ التحميل...</div>';
+      try {
+        const bVal = branchSel ? branchSel.value : bf;
+        const r = await api(`/api/stock/low${bVal ? `?branch_id=${encodeURIComponent(bVal)}` : ""}`);
+        const items = r.items || [];
+        bodyEl.innerHTML = tableHTML([
+          { label: "الدواء", key: "name" },
+          { label: "الفرع", render: (row) => `<span class="pill info">${esc(row.branch_name || "-")}</span>` },
+          { label: "المتاح حالياً", render: (row) => `<span class="pill danger">${fmt(row.qty)} ${esc(row.unit || "")}</span>` },
+          { label: "حد إعادة الطلب للفرع", key: "min_qty", num: true },
+          { label: "إجراء", render: (row) => `<button type="button" class="btn sm" onclick="showBranchStockModal(${row.id})">${icon("building")} إدارة حدود الفروع</button>` }
+        ], items, "لا توجد نواقص حالياً — جميع الأرصدة فوق الحد الأدنى");
+      } catch (e) {
+        bodyEl.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+      }
+    };
+
+    if (branchSel) branchSel.onchange = loadLow;
+    loadLow();
+  };
+
+  window.showBranchStockModal = async (pid) => {
+    try {
+      const data = await api(`/api/products/${pid}/branches-lookup`);
+      const p = data.product || {};
+      const brs = data.branches || [];
+      const alts = data.alternatives || [];
+
+      const branchRowsHtml = brs.map((br) => {
+        const isLow = br.min_qty > 0 && br.stock <= br.min_qty;
+        const canEditThisBranch = isAdmin || (user.branch_id && Number(user.branch_id) === Number(br.branch_id));
+        const inputVal = isAdmin
+          ? (br.custom_min_qty !== null && br.custom_min_qty !== undefined ? br.custom_min_qty : "")
+          : br.min_qty;
+        return `
+          <tr>
+            <td style="padding:8px; border-bottom:1px solid var(--border)">
+              <b>${esc(br.branch_name)}</b>
+              ${br.is_current ? '<span class="pill ok" style="font-size:10px;margin-right:4px">فرعك</span>' : ''}
+              ${br.phone ? `<div style="font-size:11px; color:var(--muted)">📞 ${esc(br.phone)}</div>` : ''}
+            </td>
+            <td style="padding:8px; border-bottom:1px solid var(--border); text-align:center">
+              <span class="pill ${isLow ? 'danger' : (br.stock > 0 ? 'ok' : 'warn')}">${fmt(br.stock)} ${esc(p.unit || "")}</span>
+              ${br.expired_stock > 0 ? `<div style="font-size:10px; color:var(--danger); margin-top:2px">منتهي: ${fmt(br.expired_stock)}</div>` : ''}
+            </td>
+            <td style="padding:8px; border-bottom:1px solid var(--border); text-align:center">
+              ${canEditThisBranch ? `
+                <input type="number" step="1" min="0" class="branch-limit-input" data-branch-id="${br.branch_id}"
+                  value="${inputVal}" placeholder="الافتراضي (${fmt(p.min_qty || 0)})"
+                  style="width:120px; text-align:center; padding:5px 8px;">
+              ` : `<span>${fmt(br.min_qty)}</span>`}
+            </td>
+          </tr>
+        `;
+      }).join("");
+
+      const altHtml = alts.length ? alts.map((a) => {
+        const availBranches = (a.branches_with_stock || []).map(b => `${esc(b.branch_name)} (${fmt(b.stock)})`).join(" ، ");
+        return `
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 10px; border:1px solid var(--border); border-radius:8px; margin-bottom:6px; background:var(--bg)">
+            <div>
+              <b>${esc(a.name)}</b> <span style="font-size:12px; color:var(--muted)">${esc(a.strength || "")} ${esc(a.form || "")}</span>
+              <div style="font-size:11px; color:var(--muted); margin-top:2px">
+                ${availBranches ? `متوفر في: <b style="color:var(--text)">${availBranches}</b>` : 'غير متوفر حالياً في أي فرع'}
+              </div>
+            </div>
+            <span class="pill info">${money(a.sale_price)}</span>
+          </div>
+        `;
+      }).join("") : `<div class="empty" style="padding:12px">لا توجد بدائل مسجلة بنفس المادة الفعالة (${esc(p.generic_name || "غير محددة")})</div>`;
+
+      const back = modal(`أرصدة الفروع وحدود الطلب — ${p.name}`, `
+        <div style="margin-bottom:14px">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
+            <b style="font-size:14px">توزيع المخزون وحد إعادة الطلب في الفروع</b>
+            ${isAdmin ? `
+              <div style="display:flex; align-items:center; gap:6px; font-size:12px;">
+                <span>الحد الافتراضي العام:</span>
+                <input type="number" step="1" min="0" id="modal-default-min-qty" value="${p.min_qty || 0}" style="width:80px; padding:4px 8px; text-align:center;">
+              </div>
+            ` : `<span style="font-size:12px; color:var(--muted)">الحد العام: ${fmt(p.min_qty || 0)}</span>`}
+          </div>
+          <p style="font-size:11px; color:var(--muted); margin:0 0 8px;">يمكنك تحديد حد أدنى خاص لكل فرع حسب معدل سحبه، أو تركه فارغاً ليعتمد على الحد الافتراضي العام.</p>
+          <div class="table-wrap">
+            <table style="width:100%; border-collapse:collapse; font-size:13px;">
+              <thead>
+                <tr style="background:var(--bg-secondary)">
+                  <th style="padding:8px; text-align:right; border-bottom:1px solid var(--border)">الفرع</th>
+                  <th style="padding:8px; text-align:center; border-bottom:1px solid var(--border)">المتوفر الصالح</th>
+                  <th style="padding:8px; text-align:center; border-bottom:1px solid var(--border)">حد إعادة الطلب للفرع</th>
+                </tr>
+              </thead>
+              <tbody>${branchRowsHtml}</tbody>
+            </table>
+          </div>
+        </div>
+        <div style="border-top:1px solid var(--border); padding-top:12px;">
+          <b style="font-size:14px; display:block; margin-bottom:8px;">البدائل لنفس المادة الفعالة (${esc(p.generic_name || "غير محدد")})</b>
+          <div style="max-height:180px; overflow-y:auto;">${altHtml}</div>
+        </div>
+      `, async () => {
+        const branchLimits = {};
+        $$(".branch-limit-input", back).forEach((inp) => {
+          branchLimits[inp.dataset.branchId] = inp.value.trim();
+        });
+        const payload = { branch_limits: branchLimits };
+        const defInp = $("#modal-default-min-qty", back);
+        if (defInp) {
+          payload.default_min_qty = parseFloat(defInp.value) || 0;
+        } else if (!isAdmin && user.branch_id) {
+          payload.min_qty = branchLimits[user.branch_id];
+        }
+        await api(`/api/products/${pid}/branch-limits`, {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        });
+        toast("تم حفظ حدود الطلب للفروع بنجاح");
+        load($("#p-search").value, $("#p-category-filter").value);
+      }, "حفظ الحدود");
+
+      const modalBox = $(".modal", back);
+      if (modalBox) modalBox.style.width = "min(680px, 100%)";
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  };
+
+  window.showExpiryAlerts = async () => {
+    const bf = $("#p-branch-filter") ? $("#p-branch-filter").value : "";
+    const back = modal("تنبيهات الصلاحية", `
+      <div class="tabs" style="margin-bottom:12px">
+        <button type="button" class="active" id="tab-exp-expired">منتهية الصلاحية</button>
+        <button type="button" id="tab-exp-soon">قريبة الانتهاء (خلال 30 يوم)</button>
+      </div>
+      <div id="expiry-modal-body" style="min-height:120px"></div>
+    `, null, "إغلاق");
+
+    const bodyEl = $("#expiry-modal-body", back);
+    const btnExpired = $("#tab-exp-expired", back);
+    const btnSoon = $("#tab-exp-soon", back);
+
+    const loadTab = async (mode) => {
+      btnExpired.classList.toggle("active", mode === "expired");
+      btnSoon.classList.toggle("active", mode === "soon");
+      bodyEl.innerHTML = '<div class="empty">جارٍ التحميل...</div>';
+      try {
+        const qBranch = bf ? `${mode === "expired" ? "?" : "&"}branch_id=${encodeURIComponent(bf)}` : "";
+        if (mode === "expired") {
+          const r = await api(`/api/expiry/expired${qBranch}`);
+          const items = r.items || [];
+          bodyEl.innerHTML = tableHTML([
+            { label: "الدفعة", key: "batch_no" },
+            { label: "الدواء", key: "product_name" },
+            { label: "الفرع", render: (row) => `<span class="pill info">${esc(row.branch_name || "-")}</span>` },
+            { label: "الكمية", key: "qty", num: true },
+            { label: "تاريخ الانتهاء", render: (row) => `<span class="pill danger">${esc(row.expiry_date || "")}</span>` },
+          ], items, "لا توجد أدوية منتهية الصلاحية");
+        } else {
+          const r = await api(`/api/expiry?days=30${qBranch}`);
+          const items = r.items || [];
+          bodyEl.innerHTML = tableHTML([
+            { label: "الدفعة", key: "batch_no" },
+            { label: "الدواء", key: "product_name" },
+            { label: "الفرع", render: (row) => `<span class="pill info">${esc(row.branch_name || "-")}</span>` },
+            { label: "الكمية", key: "qty", num: true },
+            { label: "تاريخ الانتهاء", render: (row) => `<span class="pill warn">${esc(row.expiry_date || "")}</span>` },
+          ], items, "لا توجد أدوية قريبة الانتهاء خلال 30 يوم");
+        }
+      } catch (e) {
+        bodyEl.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+      }
+    };
+
+    btnExpired.onclick = () => loadTab("expired");
+    btnSoon.onclick = () => loadTab("soon");
+    loadTab("expired");
+  };
+
+  $("#p-search").oninput = (e) => {
+    clearTimeout(searchTimer);
+    const val = e.target.value;
+    searchTimer = setTimeout(() => load(val, $("#p-category-filter").value), 200);
+  };
+
+  window.openProductSearchScanner = () => {
+    openCameraScanner((scannedCode) => {
+      const code = String(scannedCode || "").trim();
+      if (!code) return;
+      const inp = $("#p-search");
+      if (inp) {
+        inp.value = code;
+        inp.focus();
+      }
+      clearTimeout(searchTimer);
+      load(code, $("#p-category-filter") ? $("#p-category-filter").value : "");
+    }, { title: "مسح باركود للبحث عن دواء" });
+  };
+  $("#p-category-filter").onchange = (e) => load($("#p-search").value, e.target.value);
+  if ($("#p-branch-filter")) {
+    $("#p-branch-filter").onchange = () => load($("#p-search").value, $("#p-category-filter").value);
+  }
+
+  const PHARMACY_UNITS = [
+    "علبة",
+    "شريط",
+    "قرص",
+    "كبسولة",
+    "قطعة",
+    "زجاجة",
+    "أنبوب",
+    "أمبول",
+    "فيال",
+    "كيس/فوار",
+    "بخاخ",
+    "قطرة",
+    "تحميلة"
+  ];
+
+  function renderUnitField(selectedUnit = "علبة") {
+    const isCustom = selectedUnit && !PHARMACY_UNITS.includes(selectedUnit);
+    return `
+      <div class="field">
+        <label>الوحدة</label>
+        <select name="unit_select" class="p-unit-select" onchange="toggleCustomUnit(this)">
+          ${PHARMACY_UNITS.map(u => `<option value="${esc(u)}" ${(!isCustom && selectedUnit === u) ? "selected" : ""}>${esc(u)}</option>`).join("")}
+          <option value="__custom__" ${isCustom ? "selected" : ""}>أخرى... (كتابة وحدة مخصصة)</option>
+        </select>
+        <input type="text" class="p-unit-custom" placeholder="اكتب الوحدة المخصصة..." value="${isCustom ? esc(selectedUnit) : ""}" style="${isCustom ? "display:block; margin-top:6px;" : "display:none; margin-top:6px;"}">
+      </div>
+    `;
+  }
+
+  window.toggleCustomUnit = (sel) => {
+    const wrap = sel.closest(".field") || sel.parentElement;
+    const customInp = wrap ? wrap.querySelector(".p-unit-custom") : null;
+    if (!customInp) return;
+    if (sel.value === "__custom__") {
+      customInp.style.display = "block";
+      customInp.focus();
+    } else {
+      customInp.style.display = "none";
+    }
+  };
+
+  window.generateBarcode = async () => {
+    try {
+      const res = await api("/api/products/generate-barcode");
+      if (res.barcode) {
+        const input = $("#add-product-barcode");
+        if (input) input.value = res.barcode;
+      }
+    } catch (e) {
+      toast("فشل توليد الباركود: " + e.message, "error");
+    }
+  };
+
+  window.openAddModal = async () => {
+    let cats = [];
+    let currentExchangeRate = 1.0;
+    try {
+      const [catsData, rateData] = await Promise.all([
+        api("/api/categories"),
+        api("/api/settings/exchange-rate").catch(() => ({ rate: 1.0 }))
+      ]);
+      cats = catsData.categories || [];
+      currentExchangeRate = parseFloat(rateData.rate) || 1.0;
+    } catch (e) {
+      console.error(e);
+    }
+    const back = modal("إضافة دواء جديد", `
+      <div style="background:var(--bg-secondary); padding:10px 14px; border-radius:10px; border:1px solid var(--border); margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:6px;">
+          <label style="margin:0; font-weight:700; font-size:13px; display:flex; align-items:center; gap:6px;">
+            ${icon("barcode")} مسح الباركود للجلب التلقائي من المستودع العام:
+          </label>
+          <span id="barcode-fetch-status" style="font-size:12px; font-weight:600"></span>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <div class="input-camera-wrap" style="flex:1;">
+            <input type="text" name="barcode" id="add-product-barcode" placeholder="امسح الباركود بجهاز الباركود أو الكاميرا أو اكتبه..." autocomplete="off" autofocus>
+            <button type="button" class="btn-camera-scan" title="مسح باركود/QR بالكاميرا" onclick="openCameraScanner(c => { const inp = $('#add-product-barcode'); if(inp){ inp.value = c; $('#btn-fetch-ext')?.click(); } }, {title: 'مسح باركود الدواء بالكاميرا'})">${icon("camera")}</button>
+          </div>
+          <button type="button" class="btn sm primary" id="btn-fetch-ext" title="جلب بيانات الدواء ومادته الفعالة فوراً">${icon("search")} جلب من المستودع</button>
+          <button type="button" class="btn sm ghost" onclick="generateBarcode()" title="توليد باركود محلي جديد">${icon("barcode")} توليد</button>
+        </div>
+      </div>
+
+      <div class="form-grid">
+        <div class="field" style="position:relative;">
+          <label>اسم الدواء * <small style="color:var(--muted); font-size:11px">(اكتب للبحث المقترح في المستودع)</small></label>
+          <input type="text" name="name" id="add-product-name" required autocomplete="off">
+          <div id="add-name-autocomplete" style="display:none; position:absolute; top:100%; right:0; left:0; background:var(--bg); border:1px solid var(--border); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.18); max-height:220px; overflow-y:auto; z-index:100; margin-top:4px;"></div>
+        </div>
+        <div class="field"><label>المادة الفعالة (الاسم العلمي)</label><input type="text" name="generic_name" id="add-product-generic"></div>
+        <div class="field"><label>التركيز</label><input type="text" name="strength" id="add-product-strength" placeholder="مثال: 500mg"></div>
+        <div class="field"><label>الشكل الدوائي</label><input type="text" name="form" id="add-product-form" placeholder="أقراص / شراب / حقن"></div>
+        <div class="field"><label>التصنيف</label>
+          <select name="category_id" id="add-product-cat">
+            <option value="">-- بدون تصنيف --</option>
+            ${cats.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("")}
+          </select>
+        </div>
+        <div class="field"><label>الشركة المصنعة</label><input type="text" name="manufacturer" id="add-product-mfg"></div>
+        <div class="field">
+          <label style="display:flex; justify-content:space-between; align-items:center;">
+            <span>سعر الشراء بالدولار ($)</span>
+            <small style="color:var(--muted); font-size:11px">1$ = ${fmt(currentExchangeRate)} ${CURRENCY}</small>
+          </label>
+          <input type="number" step="0.01" min="0" name="purchase_price_usd" id="add-product-cost-usd" value="0">
+        </div>
+        <div class="field">
+          <label>سعر الشراء بالعملة المحلية (${CURRENCY})</label>
+          <input type="number" step="0.01" min="0" name="purchase_price" id="add-product-cost" value="0">
+        </div>
+        <div class="field">
+          <label style="display:flex; justify-content:space-between; align-items:center;">
+            <span>سعر البيع بالدولار ($)</span>
+            <small style="color:var(--muted); font-size:11px">1$ = ${fmt(currentExchangeRate)} ${CURRENCY}</small>
+          </label>
+          <input type="number" step="0.01" min="0" name="sale_price_usd" id="add-product-price-usd" value="0">
+        </div>
+        <div class="field">
+          <label>سعر البيع بالعملة المحلية (${CURRENCY})</label>
+          <input type="number" step="1" min="0" name="sale_price" id="add-product-price" value="0">
+        </div>
+        <div class="field"><label>الحد الأدنى العام للتنبيه</label><input type="number" name="min_qty" value="5"></div>
+        ${renderUnitField("علبة")}
+        <div class="field"><label>يتطلب وصفة</label>
+          <select name="is_prescription" id="add-product-rx">
+            <option value="0">لا</option>
+            <option value="1">نعم</option>
+          </select>
+        </div>
+      </div>
+      ${isAdmin && branches.length > 1 ? `
+        <div style="margin-top:12px; padding-top:10px; border-top:1px solid var(--border)">
+          <b style="font-size:13px; display:block; margin-bottom:6px">حد إعادة الطلب المخصص لكل فرع (اختياري)</b>
+          <div class="form-grid">
+            ${branches.map(b => `
+              <div class="field">
+                <label>${esc(b.name)}</label>
+                <input type="number" min="0" class="add-branch-min" data-branch-id="${b.id}" placeholder="يتبع الحد العام">
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      ` : ""}
+    `, async (fd) => {
+      const unitSel = $(".p-unit-select", back);
+      const unitCust = $(".p-unit-custom", back);
+      if (unitSel && unitSel.value === "__custom__") {
+        fd.unit = (unitCust && unitCust.value.trim()) ? unitCust.value.trim() : "قطعة";
+      } else if (unitSel) {
+        fd.unit = unitSel.value;
+      }
+      delete fd.unit_select;
+
+      const branch_limits = {};
+      $$(".add-branch-min", back).forEach((inp) => {
+        if (inp.value.trim() !== "") branch_limits[inp.dataset.branchId] = inp.value.trim();
+      });
+      fd.branch_limits = branch_limits;
+      await api("/api/products", { method: "POST", body: JSON.stringify(fd) });
+      toast("تمت إضافة الدواء بنجاح");
+      load($("#p-search").value, $("#p-category-filter").value);
+    });
+
+    const bInput = $("#add-product-barcode", back);
+    const nInput = $("#add-product-name", back);
+    const gInput = $("#add-product-generic", back);
+    const sInput = $("#add-product-strength", back);
+    const fInput = $("#add-product-form", back);
+    const mInput = $("#add-product-mfg", back);
+    const cSelect = $("#add-product-cat", back);
+    const rxSelect = $("#add-product-rx", back);
+    const costInput = $("#add-product-cost", back);
+    const statusEl = $("#barcode-fetch-status", back);
+    const btnFetch = $("#btn-fetch-ext", back);
+    const acBox = $("#add-name-autocomplete", back);
+    const costUsdInp = $("#add-product-cost-usd", back);
+    const priceUsdInp = $("#add-product-price-usd", back);
+    const priceInp = $("#add-product-price", back);
+
+    if (costUsdInp && costInput) {
+      costUsdInp.addEventListener("input", () => {
+        const val = parseFloat(costUsdInp.value) || 0;
+        if (val > 0) costInput.value = (val * currentExchangeRate).toFixed(2);
+      });
+      costInput.addEventListener("input", () => {
+        const val = parseFloat(costInput.value) || 0;
+        if (val > 0 && currentExchangeRate > 0) costUsdInp.value = (val / currentExchangeRate).toFixed(2);
+      });
+    }
+
+    if (priceUsdInp && priceInp) {
+      priceUsdInp.addEventListener("input", () => {
+        const val = parseFloat(priceUsdInp.value) || 0;
+        if (val > 0) priceInp.value = Math.round(val * currentExchangeRate);
+      });
+      priceInp.addEventListener("input", () => {
+        const val = parseFloat(priceInp.value) || 0;
+        if (val > 0 && currentExchangeRate > 0) priceUsdInp.value = (val / currentExchangeRate).toFixed(2);
+      });
+    }
+
+    const fillProductData = (p) => {
+      if (!p) return;
+      if (p.name) nInput.value = p.name;
+      if (p.generic_name) gInput.value = p.generic_name;
+      if (p.strength) sInput.value = p.strength;
+      if (p.form) fInput.value = p.form;
+      if (p.manufacturer) mInput.value = p.manufacturer;
+      if (p.barcode && (!bInput.value || bInput.value.trim() === "")) bInput.value = p.barcode;
+      if (p.is_prescription !== undefined) rxSelect.value = String(p.is_prescription ? 1 : 0);
+
+      if (p.category_id) {
+        cSelect.value = p.category_id;
+      } else if (p.category) {
+        let matched = false;
+        for (let i = 0; i < cSelect.options.length; i++) {
+          if (cSelect.options[i].text.toLowerCase() === p.category.toLowerCase()) {
+            cSelect.selectedIndex = i;
+            matched = true;
+            break;
+          }
+        }
+        if (!matched && p.category) {
+          const opt = document.createElement("option");
+          opt.value = "";
+          opt.text = p.category;
+          opt.selected = true;
+          cSelect.appendChild(opt);
+        }
+      }
+
+      statusEl.innerHTML = `<span style="color:var(--success); display:inline-flex; align-items:center; gap:4px">${icon("check")} تم جلب بيانات الدواء من المستودع (${esc(p.source || "OpenFDA")})</span>`;
+      if (costInput) costInput.focus();
+    };
+
+    const doBarcodeLookup = async () => {
+      const code = (bInput.value || "").trim();
+      if (!code) {
+        statusEl.innerHTML = `<span style="color:var(--warn)">يرجى كتابة أو مسح الباركود أولاً</span>`;
+        return;
+      }
+      statusEl.innerHTML = `<span style="color:var(--muted)">جاري البحث في المستودع العام...</span>`;
+      btnFetch.disabled = true;
+      try {
+        const res = await api(`/api/products/lookup-external?barcode=${encodeURIComponent(code)}`);
+        if (res.already_exists_locally && res.existing_product) {
+          statusEl.innerHTML = `<span style="color:var(--danger)">⚠️ الباركود مسجل مسبقاً لصنف: ${esc(res.existing_product.name)}</span>`;
+        } else if (res.found && res.product) {
+          fillProductData(res.product);
+          toast("تم العثور على بيانات الدواء وتعبئتها تلقائياً");
+        } else {
+          statusEl.innerHTML = `<span style="color:var(--muted)">لم يتم العثور على هذا الباركود في المستودع العام</span>`;
+        }
+      } catch (err) {
+        statusEl.innerHTML = `<span style="color:var(--danger)">تعذر الاتصال بالمستودع: ${esc(err.message || "")}</span>`;
+      } finally {
+        btnFetch.disabled = false;
+      }
+    };
+
+    btnFetch.onclick = doBarcodeLookup;
+
+    let scanTimer = null;
+    bInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        doBarcodeLookup();
+      }
+    });
+
+    bInput.addEventListener("input", () => {
+      clearTimeout(scanTimer);
+      const val = bInput.value.trim();
+      if (val.length >= 10) {
+        scanTimer = setTimeout(doBarcodeLookup, 400);
+      }
+    });
+
+    // Autocomplete on drug name input
+    let nameSearchTimer = null;
+    nInput.addEventListener("input", () => {
+      clearTimeout(nameSearchTimer);
+      const q = nInput.value.trim();
+      if (q.length < 2) {
+        acBox.style.display = "none";
+        return;
+      }
+      nameSearchTimer = setTimeout(async () => {
+        try {
+          const res = await api(`/api/products/search-external?q=${encodeURIComponent(q)}&limit=6`);
+          const items = res.results || [];
+          if (!items.length) {
+            acBox.style.display = "none";
+            return;
+          }
+          acBox.innerHTML = items.map((it, idx) => `
+            <div class="ac-item" data-idx="${idx}" style="padding:8px 12px; cursor:pointer; border-bottom:1px solid var(--border); transition:background 0.15s">
+              <div style="display:flex; justify-content:space-between; align-items:center">
+                <b style="font-size:13px">${esc(it.name)}</b>
+                <span class="pill info" style="font-size:10px">${esc(it.form || "")} ${esc(it.strength || "")}</span>
+              </div>
+              <div style="font-size:11px; color:var(--muted); margin-top:2px">${esc(it.generic_name || "")} ${it.manufacturer ? `• ${esc(it.manufacturer)}` : ""}</div>
+            </div>
+          `).join("");
+          acBox.style.display = "block";
+
+          $$(".ac-item", acBox).forEach((el, idx) => {
+            el.onmouseenter = () => { el.style.background = "var(--bg-secondary)"; };
+            el.onmouseleave = () => { el.style.background = "transparent"; };
+            el.onclick = () => {
+              fillProductData(items[idx]);
+              acBox.style.display = "none";
+            };
+          });
+        } catch (e) {
+          acBox.style.display = "none";
+        }
+      }, 350);
+    });
+
+    document.addEventListener("click", (e) => {
+      if (acBox && !acBox.contains(e.target) && e.target !== nInput) {
+        acBox.style.display = "none";
+      }
+    });
+  };
+
+  window.openGlobalCatalogModal = () => {
+    const back = modal("المستودع العام للأدوية (OpenFDA)", `
+      <div style="margin-bottom:14px">
+        <div style="display:flex; gap:8px;">
+          <input type="text" id="global-cat-search" placeholder="ابحث باسم الدواء التجاري أو العلمي (مثال: Lipitor, Amoxicillin, Panadol, Aspirin)..." style="flex:1" autofocus autocomplete="off">
+          <button type="button" class="btn primary" id="global-cat-search-btn">${icon("search")} بحث في المستودع</button>
+        </div>
+        <small style="color:var(--muted); display:block; margin-top:6px">ابحث في قاعدة بيانات الأدوية العالمية المفتوحة OpenFDA واستورد أي دواء لبيانات صيدليتك بنقرة زر واحدة.</small>
+      </div>
+      <div id="global-cat-results" style="max-height:55vh; min-height:140px; overflow-y:auto; padding:2px">
+        <div class="empty" style="padding:30px 10px;">اكتب اسم دواء واضغط بحث لعرض الأدوية المطابقة من المستودع العام</div>
+      </div>
+    `);
+
+    const modalBox = $(".modal", back);
+    if (modalBox) modalBox.style.width = "min(860px, 100%)";
+
+    const sInp = $("#global-cat-search", back);
+    const sBtn = $("#global-cat-search-btn", back);
+    const rBox = $("#global-cat-results", back);
+
+    const runSearch = async () => {
+      const q = (sInp.value || "").trim();
+      if (!q) { toast("يرجى كتابة اسم الدواء للبحث", "warn"); return; }
+      rBox.innerHTML = `<div class="empty" style="padding:40px 10px;">جاري جلب الأدوية من مستودع OpenFDA...</div>`;
+      sBtn.disabled = true;
+      try {
+        const res = await api(`/api/products/search-external?q=${encodeURIComponent(q)}&limit=15`);
+        const items = res.results || [];
+        if (!items.length) {
+          rBox.innerHTML = `<div class="empty" style="padding:30px 10px;">لم يتم العثور على أدوية مطابقة لـ "${esc(q)}" في المستودع العام</div>`;
+          return;
+        }
+
+        rBox.innerHTML = `
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            ${items.map((it, idx) => `
+              <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-secondary); border:1px solid var(--border); border-radius:10px; padding:12px 14px; gap:12px; flex-wrap:wrap">
+                <div style="flex:1; min-width:240px">
+                  <div style="display:flex; align-items:center; gap:8px">
+                    <b style="font-size:15px; color:var(--primary)">${esc(it.name)}</b>
+                    ${it.strength ? `<span class="pill info">${esc(it.strength)}</span>` : ""}
+                    ${it.form ? `<span class="pill">${esc(it.form)}</span>` : ""}
+                    ${it.is_prescription ? `<span class="pill warn">وصفة طبية</span>` : `<span class="pill ok">بدون وصفة</span>`}
+                  </div>
+                  <div style="font-size:12px; color:var(--text); margin-top:4px">
+                    <b>المادة الفعالة:</b> ${esc(it.generic_name || "غير محدد")}
+                  </div>
+                  <div style="font-size:11px; color:var(--muted); margin-top:2px">
+                    ${it.manufacturer ? `الشركة: ${esc(it.manufacturer)} • ` : ""}
+                    ${it.barcode ? `الباركود: <span class="mono">${esc(it.barcode)}</span> • ` : ""}
+                    التصنيف: ${esc(it.category || "عام")}
+                  </div>
+                </div>
+                <button type="button" class="btn primary sm" onclick="importFromGlobalCat(${idx})">${icon("plus")} إضافة لصيدليتي</button>
+              </div>
+            `).join("")}
+          </div>
+        `;
+
+        window._lastGlobalCatResults = items;
+      } catch (err) {
+        rBox.innerHTML = `<div class="empty" style="color:var(--danger); padding:30px 10px;">تعذر جلب الأدوية: ${esc(err.message || "")}</div>`;
+      } finally {
+        sBtn.disabled = false;
+      }
+    };
+
+    sBtn.onclick = runSearch;
+    sInp.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        runSearch();
+      }
+    });
+
+    window.importFromGlobalCat = async (idx) => {
+      const item = (window._lastGlobalCatResults || [])[idx];
+      if (!item) return;
+
+      const pBack = modal(`إضافة الدواء (${esc(item.name)}) لصيدليتك`, `
+        <div class="form-grid">
+          <div class="field"><label>اسم الدواء *</label><input type="text" name="name" value="${esc(item.name)}" required></div>
+          <div class="field"><label>الباركود</label><input type="text" name="barcode" value="${esc(item.barcode || "")}"></div>
+          <div class="field"><label>المادة الفعالة</label><input type="text" name="generic_name" value="${esc(item.generic_name || "")}"></div>
+          <div class="field"><label>التركيز والشكل</label><input type="text" value="${esc(item.strength || "")} - ${esc(item.form || "")}" readonly style="background:var(--bg-secondary)"></div>
+          <div class="field"><label>سعر الشراء (${CURRENCY}) *</label><input type="number" step="0.01" min="0" name="purchase_price" value="0" required autofocus></div>
+          <div class="field"><label>سعر البيع (${CURRENCY}) *</label><input type="number" step="0.01" min="0" name="sale_price" value="0" required></div>
+          <div class="field"><label>حد التنبيه الأدنى</label><input type="number" name="min_qty" value="5"></div>
+          ${renderUnitField("علبة")}
+        </div>
+      `, async (fd) => {
+        const unitSel = $(".p-unit-select", pBack);
+        const unitCust = $(".p-unit-custom", pBack);
+        if (unitSel && unitSel.value === "__custom__") {
+          fd.unit = (unitCust && unitCust.value.trim()) ? unitCust.value.trim() : "علبة";
+        } else if (unitSel) {
+          fd.unit = unitSel.value;
+        }
+        delete fd.unit_select;
+
+        const payload = Object.assign({}, item, fd);
+        await api("/api/products/quick-import-external", {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
+        toast(`تمت إضافة "${item.name}" إلى صيدليتك بنجاح!`);
+        load($("#p-search") ? $("#p-search").value : "", $("#p-category-filter") ? $("#p-category-filter").value : "");
+      }, "حفظ وإضافة للصيدلية");
+    };
+  };
+
+
+  window.exportProducts = async (fmt = "xlsx") => {
+    const search = $("#p-search") ? $("#p-search").value : "";
+    const category = $("#p-category-filter") ? $("#p-category-filter").value : "";
+    const bf = $("#p-branch-filter") ? $("#p-branch-filter").value : "";
+    const params = new URLSearchParams();
+    params.set("format", fmt);
+    if (search) params.set("search", search);
+    if (category) params.set("category", category);
+    if (bf) params.set("branch_id", bf);
+
+    await runWithDeterminateRing({
+      title: `تصدير قائمة الأدوية (${fmt.toUpperCase()})`,
+      subtitle: "استخراج بيانات الأدوية والأسعار والمخزون",
+      stages: [
+        { pct: 25, label: "استعلام وتجميع بيانات الأدوية والتصنيفات" },
+        { pct: 60, label: "حساب أرصدة الفروع والأسعار والباركود" },
+        { pct: 85, label: "بناء ملف الإكسل وتنسيق الأعمدة" },
+        { pct: 100, label: "اكتمل تصدير الملف وبدء التحميل" }
+      ],
+      successMessage: "تم تجهيز وتنزيل الملف بنجاح!",
+      holdSuccessMs: 1000,
+      action: async () => {
+        window.location.href = `/api/products/export?${params.toString()}`;
+        await new Promise(r => setTimeout(r, 600));
+      }
+    });
+  };
+
+  window.openImportModal = () => {
+    modal("استيراد الأدوية من ملف Excel أو CSV", `
+      <div style="margin-bottom:14px; padding:12px; background:var(--surface-sunken, #f8fafc); border-radius:8px; border:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+        <div>
+          <div style="font-weight:600; font-size:13px;">نموذج استيراد جاهز ومطابق للنظام</div>
+          <div style="font-size:12px; color:var(--muted); margin-top:2px;">حمّل النموذج المجهز بالأعمدة والبيانات التجريبية</div>
+        </div>
+        <div style="display:flex; gap:6px;">
+          <a href="/api/products/template?format=xlsx" download class="btn sm" style="text-decoration:none;">${icon("download")} Excel</a>
+          <a href="/api/products/template?format=csv" download class="btn sm" style="text-decoration:none;">${icon("download")} CSV</a>
+        </div>
+      </div>
+      <div class="field"><label>اختر الملف (.xlsx أو .csv)</label><input type="file" id="import-file" accept=".xlsx,.xlsm,.csv" required></div>
+      <p style="color:var(--muted); font-size:12px; margin-top:8px">يدعم النظام الاستيراد والتحديث التلقائي، والربط بالتصنيفات وإنشاء أرصدة تشغيلية للمخزون الأولي.</p>
+    `, async () => {
+      const f = $("#import-file").files[0];
+      if (!f) throw new Error("اختر ملفاً أولاً");
+      const fd = new FormData();
+      fd.append("file", f);
+      const token = await getCsrfToken();
+
+      await runWithDeterminateRing({
+        title: "استيراد الأدوية إلى قاعدة البيانات",
+        subtitle: `الملف: ${f.name} (${(f.size / 1024).toFixed(1)} KB)`,
+        stages: [
+          { pct: 20, label: "قراءة وتحليل صفوف ملف الإكسل/CSV" },
+          { pct: 50, label: "التحقق من صحة الباركود والأسماء والأسعار" },
+          { pct: 80, label: "حفظ الأصناف وتحديث أرصدة المخزون بالصيدلية" },
+          { pct: 100, label: "اكتمل استيراد وتحديث الأدوية بنجاح" }
+        ],
+        successMessage: "تم الاستيراد بنجاح!",
+        holdSuccessMs: 1400,
+        action: async () => {
+          const res = await fetch("/api/products/import", {
+            method: "POST",
+            headers: token ? { "X-CSRF-Token": token } : {},
+            body: fd
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "فشل الاستيراد");
+          const msg = `تم الاستيراد: ${data.imported || 0} دواء جديد، و ${data.updated || 0} دواء محدّث${data.skipped ? ` (تخطي ${data.skipped})` : ""}`;
+          setTimeout(() => toast(msg), 500);
+          return data;
+        }
+      });
+      load();
+    }, "استيراد");
+  };
+
+  window.editProd = async (id) => {
+    let p = null;
+    let cats = [];
+    let currentExchangeRate = 1.0;
+    try {
+      const [prodData, catsData, rateData] = await Promise.all([
+        api(`/api/products/${id}`),
+        api("/api/categories"),
+        api("/api/settings/exchange-rate").catch(() => ({ rate: 1.0 }))
+      ]);
+      p = prodData;
+      cats = catsData.categories || [];
+      currentExchangeRate = parseFloat(rateData.rate) || 1.0;
+    } catch (e) {
+      toast(e.message, "error");
+      return;
+    }
+    const brLimits = p.branch_limits || [];
+    const back = modal("تعديل بيانات الدواء", `
+      <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-secondary); padding:8px 12px; border-radius:8px; margin-bottom:12px; border:1px solid var(--border); flex-wrap:wrap; gap:8px;">
+        <span style="font-size:12px; color:var(--text-sub)">استكمال البيانات الطبية الناقصة (المادة الفعالة، الشكل، التركيز) من المستودع العام:</span>
+        <button type="button" class="btn sm" id="btn-edit-ext-complete">${icon("search")} استكمال من المستودع</button>
+      </div>
+      <div class="form-grid">
+        <div class="field"><label>اسم الدواء *</label><input type="text" name="name" id="edit-prod-name" value="${esc(p.name)}" required></div>
+        <div class="field"><label>المادة الفعالة</label><input type="text" name="generic_name" id="edit-prod-generic" value="${esc(p.generic_name || "")}"></div>
+        <div class="field"><label>التركيز</label><input type="text" name="strength" id="edit-prod-strength" value="${esc(p.strength || "")}"></div>
+        <div class="field"><label>الشكل الدوائي</label><input type="text" name="form" id="edit-prod-form" value="${esc(p.form || "")}"></div>
+        <div class="field"><label>التصنيف</label>
+          <select name="category_id" id="edit-prod-cat">
+            <option value="">-- بدون تصنيف --</option>
+            ${cats.map((c) => `<option value="${c.id}" ${p.category_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join("")}
+          </select>
+        </div>
+        <div class="field">
+          <label>الباركود</label>
+          <div class="input-camera-wrap">
+            <input type="text" name="barcode" id="edit-prod-barcode" value="${esc(p.barcode || "")}">
+            <button type="button" class="btn-camera-scan" title="مسح باركود/QR بالكاميرا" onclick="openCameraScanner(c => { const inp = $('#edit-prod-barcode'); if(inp) inp.value = c; }, {title: 'مسح باركود الدواء بالكاميرا'})">${icon("camera")}</button>
+          </div>
+        </div>
+        <div class="field">
+          <label style="display:flex; justify-content:space-between; align-items:center;">
+            <span>سعر الشراء بالدولار ($)</span>
+            <small style="color:var(--muted); font-size:11px">1$ = ${fmt(currentExchangeRate)} ${CURRENCY}</small>
+          </label>
+          <input type="number" step="0.01" min="0" name="purchase_price_usd" id="edit-prod-cost-usd" value="${p.purchase_price_usd || 0}">
+        </div>
+        <div class="field">
+          <label>سعر الشراء بالعملة المحلية (${CURRENCY})</label>
+          <input type="number" step="0.01" min="0" name="purchase_price" id="edit-prod-cost" value="${p.purchase_price || 0}">
+        </div>
+        <div class="field">
+          <label style="display:flex; justify-content:space-between; align-items:center;">
+            <span>سعر البيع بالدولار ($)</span>
+            <small style="color:var(--muted); font-size:11px">1$ = ${fmt(currentExchangeRate)} ${CURRENCY}</small>
+          </label>
+          <input type="number" step="0.01" min="0" name="sale_price_usd" id="edit-prod-price-usd" value="${p.sale_price_usd || 0}">
+        </div>
+        <div class="field">
+          <label>سعر البيع بالعملة المحلية (${CURRENCY})</label>
+          <input type="number" step="1" min="0" name="sale_price" id="edit-prod-price" value="${p.sale_price || 0}">
+        </div>
+        <div class="field"><label>${isAdmin ? "الحد الأدنى العام" : "الحد الأدنى لفرعك"}</label><input type="number" name="min_qty" value="${isAdmin ? (p.default_min_qty ?? p.min_qty) : p.min_qty}"></div>
+        ${renderUnitField(p.unit || "علبة")}
+        <div class="field"><label>يتطلب وصفة</label>
+          <select name="is_prescription" id="edit-prod-rx">
+            <option value="0" ${!p.is_prescription ? 'selected' : ''}>لا</option>
+            <option value="1" ${p.is_prescription ? 'selected' : ''}>نعم</option>
+          </select>
+        </div>
+      </div>
+      ${isAdmin && brLimits.length > 0 ? `
+        <div style="margin-top:12px; padding-top:10px; border-top:1px solid var(--border)">
+          <b style="font-size:13px; display:block; margin-bottom:6px">تخصيص الحد الأدنى لكل فرع (اتركه فارغاً لاعتماد الحد العام)</b>
+          <div class="form-grid">
+            ${brLimits.map(bl => `
+              <div class="field">
+                <label>${esc(bl.branch_name)} <small style="color:var(--muted)">(المتوفر: ${fmt(bl.stock)})</small></label>
+                <input type="number" min="0" class="edit-branch-min" data-branch-id="${bl.branch_id}"
+                  value="${bl.custom_min_qty !== null && bl.custom_min_qty !== undefined ? bl.custom_min_qty : ""}"
+                  placeholder="الافتراضي (${fmt(p.default_min_qty ?? p.min_qty)})">
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      ` : ""}
+    `, async (fd) => {
+      const unitSel = $(".p-unit-select", back);
+      const unitCust = $(".p-unit-custom", back);
+      if (unitSel && unitSel.value === "__custom__") {
+        fd.unit = (unitCust && unitCust.value.trim()) ? unitCust.value.trim() : "قطعة";
+      } else if (unitSel) {
+        fd.unit = unitSel.value;
+      }
+      delete fd.unit_select;
+
+      if (isAdmin && brLimits.length > 0) {
+        const branch_limits = {};
+        $$(".edit-branch-min", back).forEach((inp) => {
+          branch_limits[inp.dataset.branchId] = inp.value.trim();
+        });
+        fd.branch_limits = branch_limits;
+      }
+      await api(`/api/products/${id}`, { method: "PUT", body: JSON.stringify(fd) });
+      toast("تم التعديل بنجاح");
+      load($("#p-search").value, $("#p-category-filter").value);
+    });
+
+    const btnComp = $("#btn-edit-ext-complete", back);
+    const costUsdInp = $("#edit-prod-cost-usd", back);
+    const costInp = $("#edit-prod-cost", back);
+    const priceUsdInp = $("#edit-prod-price-usd", back);
+    const priceInp = $("#edit-prod-price", back);
+
+    if (costUsdInp && costInp) {
+      costUsdInp.addEventListener("input", () => {
+        const val = parseFloat(costUsdInp.value) || 0;
+        if (val > 0) costInp.value = (val * currentExchangeRate).toFixed(2);
+      });
+      costInp.addEventListener("input", () => {
+        const val = parseFloat(costInp.value) || 0;
+        if (val > 0 && currentExchangeRate > 0) costUsdInp.value = (val / currentExchangeRate).toFixed(2);
+      });
+    }
+
+    if (priceUsdInp && priceInp) {
+      priceUsdInp.addEventListener("input", () => {
+        const val = parseFloat(priceUsdInp.value) || 0;
+        if (val > 0) priceInp.value = Math.round(val * currentExchangeRate);
+      });
+      priceInp.addEventListener("input", () => {
+        const val = parseFloat(priceInp.value) || 0;
+        if (val > 0 && currentExchangeRate > 0) priceUsdInp.value = (val / currentExchangeRate).toFixed(2);
+      });
+    }
+    if (btnComp) {
+      btnComp.onclick = async () => {
+        const bc = ($("#edit-prod-barcode", back).value || "").trim();
+        const nm = ($("#edit-prod-name", back).value || "").trim();
+        if (!bc && !nm) { toast("يرجى كتابة الاسم أو الباركود أولاً", "warn"); return; }
+        btnComp.disabled = true;
+        btnComp.textContent = "جاري البحث...";
+        try {
+          const url = `/api/products/lookup-external?barcode=${encodeURIComponent(bc)}&name=${encodeURIComponent(nm)}`;
+          const res = await api(url);
+          if (res.found && res.product) {
+            const ext = res.product;
+            const gInp = $("#edit-prod-generic", back);
+            const sInp = $("#edit-prod-strength", back);
+            const fInp = $("#edit-prod-form", back);
+            const bInp = $("#edit-prod-barcode", back);
+            const rxInp = $("#edit-prod-rx", back);
+
+            let updatedCount = 0;
+            if (ext.generic_name && (!gInp.value || gInp.value.trim() === "")) { gInp.value = ext.generic_name; updatedCount++; }
+            if (ext.strength && (!sInp.value || sInp.value.trim() === "")) { sInp.value = ext.strength; updatedCount++; }
+            if (ext.form && (!fInp.value || fInp.value.trim() === "")) { fInp.value = ext.form; updatedCount++; }
+            if (ext.barcode && (!bInp.value || bInp.value.trim() === "")) { bInp.value = ext.barcode; updatedCount++; }
+            if (ext.is_prescription !== undefined) { rxInp.value = String(ext.is_prescription ? 1 : 0); }
+
+            toast(`تم استكمال بيانات الدواء من المستودع بنجاح (${updatedCount} حقول جديدة)`);
+          } else {
+            toast("لم يتم العثور على بيانات إضافية في المستودع العام", "info");
+          }
+        } catch (err) {
+          toast(`فشل الاستعلام من المستودع: ${err.message}`, "error");
+        } finally {
+          btnComp.disabled = false;
+          btnComp.innerHTML = `${icon("search")} استكمال من المستودع`;
+        }
+      };
+    }
+  };
+
+  window.deleteProd = async (id) => {
+    if (!(await showPopupConfirm("هل أنت متأكد من حذف هذا الدواء؟", "حذف دواء"))) return;
+    await api(`/api/products/${id}`, { method: "DELETE" });
+    toast("تم حذف الدواء بنجاح");
+    load($("#p-search").value, $("#p-category-filter").value);
+  };
+
+  window.printBarcodeLabel = async (pid, name, price, code, imgUrl) => {
+    const copies = Math.max(1, parseInt(document.getElementById("barcode-copies")?.value) || 1);
+    
+    if (copies >= 3) {
+      await runWithDeterminateRing({
+        title: "تجهيز ملصقات الباركود للطباعة",
+        subtitle: `${name} — عدد ${copies} ملصقات`,
+        iconType: "database",
+        stages: [
+          { pct: 25, label: "توليد وتنسيق كود الباركود والأسعار" },
+          { pct: 60, label: "معالجة أبعاد الطباعة الحرارية والمقاسات" },
+          { pct: 85, label: "تجميع صفحات الملصقات المتعددة" },
+          { pct: 100, label: "جاهز للطباعة الفورية" }
+        ],
+        successMessage: `تم تجهيز ${copies} ملصق بنجاح!`,
+        holdSuccessMs: 800,
+        action: async () => {
+          await new Promise(r => setTimeout(r, 450));
+        }
+      });
+    }
+
+    let labelsHtml = '';
+    for (let i = 0; i < copies; i++) {
+      labelsHtml += `
+        <div class="barcode-label">
+          <div class="ph-name">تِــريَــاق</div>
+          <div class="prod-name">${esc(name)}</div>
+          <div class="price">السعر: ${money(price)}</div>
+          <img src="${imgUrl}" alt="${code}" class="bc-img">
+          <div class="code-num">${esc(code)}</div>
+        </div>
+      `;
+    }
+    const html = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">
+    <style>
+      @page { size: 50mm 30mm; margin: 0; }
+      body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; direction: rtl; text-align: center; }
+      .barcode-label { width: 48mm; height: 28mm; margin: 1mm auto; padding: 1.5mm 1mm; box-sizing: border-box; page-break-after: always; display: flex; flex-direction: column; justify-content: space-between; align-items: center; overflow: hidden; }
+      .ph-name { font-size: 8px; font-weight: bold; color: #555; }
+      .prod-name { font-size: 10px; font-weight: bold; max-width: 46mm; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; line-height: 1.2; }
+      .price { font-size: 10px; font-weight: bold; color: #000; }
+      .bc-img { max-width: 44mm; max-height: 11mm; object-fit: contain; }
+      .code-num { font-size: 8px; font-family: monospace; letter-spacing: 1px; }
+    </style></head><body>${labelsHtml}</body></html>`;
+    printHtml(html);
+  };
+
+  window.showBarcode = async (pid, barcode) => {
+    try {
+      const data = await api(`/api/products/${pid}/barcode`);
+      const prodName = data.name || "دواء";
+      const price = data.sale_price || 0;
+      const bCode = data.barcode || barcode;
+      modal("ملصق الباركود", `
+        <div style="text-align:center; padding:12px">
+          <div style="display:inline-block; border:1px dashed var(--border); border-radius:8px; padding:12px; background:var(--card); max-width:280px; width:100%; margin-bottom:12px">
+            <div style="font-size:12px; font-weight:700; color:var(--muted)">تِــريَــاق</div>
+            <div style="font-size:14px; font-weight:700; margin:4px 0">${esc(prodName)}</div>
+            <div style="font-size:13px; font-weight:600; color:var(--primary); margin-bottom:6px">${money(price)}</div>
+            <img src="${data.image_url}" alt="barcode" style="max-width:220px; width:100%; height:auto; background:#fff; padding:6px; border-radius:6px; display:block; margin:0 auto" />
+            <p style="margin:6px 0 0; color:var(--muted); font-family:monospace; font-size:12px">${esc(bCode)}</p>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:14px">
+            <label for="barcode-copies" style="font-size:12px; font-weight:600">عدد النسخ:</label>
+            <input type="number" id="barcode-copies" value="1" min="1" max="100" style="width:65px; padding:4px 8px; text-align:center; border:1px solid var(--border); border-radius:6px; font-size:13px">
+          </div>
+          <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap">
+            <button type="button" class="btn primary" onclick="printBarcodeLabel(${pid}, \`${esc(prodName).replace(/`/g, "\\`")}\`, ${price}, \`${esc(bCode)}\`, \`${data.image_url}\`)">${icon("print")} طباعة ملصق الباركود</button>
+            <a href="${data.image_url}" download="barcode-${pid}.svg" class="btn">${icon("download")} تحميل SVG</a>
+          </div>
+        </div>
+      `, null, "إغلاق");
+    } catch (e) {
+      toast("لم يتم العثور على الباركود: " + (e.message || "خطأ"));
+    }
+  };
+
+  load();
+  loadCategories();
+});
+</script>
+</body>
+</html>

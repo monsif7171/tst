@@ -1,0 +1,222 @@
+﻿<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="light">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تِــريَــاق — العروض والخصومات</title>
+<link rel="stylesheet" href="css/app.css?v=2.3">
+  <link rel="stylesheet" href="css/responsive.css">
+  <link rel="stylesheet" href="css/design-system.css">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<link rel="apple-touch-icon" href="img/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ترياق">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#f2572c"></head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="js/app.js?v=2.2"></script>
+<script>
+boot("العروض والخصومات", async (user, el) => {
+  // الصيدلي يرى القائمة فقط، المدير يدير العروض
+  const isAdmin = user.role === "admin";
+
+  el.innerHTML = `
+    <div class="toolbar">
+      ${isAdmin ? `<button class="btn primary" onclick="openAddPromo()">${icon("plus")}<span>إضافة عرض جديد</span></button>` : ''}
+    </div>
+    <div class="card" id="promo-table"></div>`;
+
+  async function load() {
+    const data = await api("/api/promotions");
+    const promos = data.promotions || [];
+    const cols = [
+      { label: "العرض", key: "name" },
+      { label: "نوع الخصم", render: (r) => esc(r.discount_type === "percentage" ? "نسبة مئوية" : "مبلغ ثابت") },
+      { label: "القيمة", render: (r) => r.discount_type === "percentage" ? `${r.discount_value}%` : money(r.discount_value) },
+      { label: "من", render: (r) => esc((r.start_date || "").slice(0, 10)) },
+      { label: "إلى", render: (r) => esc((r.end_date || "").slice(0, 10)) },
+      { label: "شروط الاستفادة", render: (r) => esc(r.conditions || "—") },
+      { label: "الحالة", render: (r) => {
+        const active = !!r.active;
+        return `<span class="pill ${active ? 'ok' : 'danger'}">${active ? 'نشط' : 'معطّل'}</span>`;
+      }},
+      { label: "أنشأه", render: (r) => esc(r.created_by_name || "") },
+      { label: "أقرّه", render: (r) => esc(r.approved_by_name || "—") },
+    ];
+    if (isAdmin) {
+      cols.push({ label: "إجراءات", render: (r) => {
+        let btns = `<button type="button" class="btn sm" onclick="editPromo(${r.id})" title="تعديل العرض" aria-label="تعديل العرض">${icon("edit")}</button> `;
+        if (!r.active) {
+          btns += `<button type="button" class="btn sm primary" onclick="approvePromo(${r.id})">${icon("play")} تفعيل</button> `;
+          btns += `<button type="button" class="btn sm danger" onclick="rejectPromo(${r.id})">${icon("cross")} رفض</button>`;
+        } else {
+          btns += `<button type="button" class="btn sm danger" onclick="rejectPromo(${r.id})">${icon("pause")} تعطيل</button>`;
+        }
+        btns += ` <button type="button" class="btn sm ghost" onclick="deletePromo(${r.id})" title="حذف العرض" aria-label="حذف العرض">${icon("trash")}</button>`;
+        return btns;
+      }});
+    }
+    $("#promo-table").innerHTML = tableHTML(cols, promos, "لا توجد عروض");
+  }
+
+  window.openAddPromo = async () => {
+    const products = (await api("/api/products")).products || [];
+    const categories = (await api("/api/categories")).categories || [];
+    modal("إضافة عرض جديد", `
+      <div class="form-grid">
+        <div class="field"><label>اسم العرض *</label><input type="text" name="name" required></div>
+        <div class="field"><label>نوع الخصم</label>
+          <select name="discount_type" onchange="$('#disc-val').innerHTML = this.value === 'percentage' ? 'النسبة (%)' : 'المبلغ (ج.س)'">
+            <option value="percentage">نسبة مئوية</option>
+            <option value="fixed">مبلغ ثابت</option>
+          </select>
+        </div>
+        <div class="field"><label id="disc-val">القيمة (%)</label><input type="number" step="0.01" name="discount_value" required></div>
+        <div class="field"><label>من *</label><input type="date" name="start_date" required></div>
+        <div class="field"><label>إلى *</label><input type="date" name="end_date" required></div>
+        <div class="field"><label>ينطبق على</label>
+          <select name="apply_to" onchange="toggleTargets(this.value)">
+            <option value="all">الكل</option>
+            <option value="specific_products">منتجات محددة</option>
+            <option value="specific_categories">تصنيفات محددة</option>
+          </select>
+        </div>
+        <div id="product-targets" style="display:none" class="field">
+          <label>المنتجات</label>
+          <div style="max-height:150px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; padding:8px">
+            ${products.map(p => `<label style="display:flex; gap:8px; padding:4px 0"><input type="checkbox" name="product_ids" value="${p.id}"> ${esc(p.name)}</label>`).join("")}
+          </div>
+        </div>
+        <div id="category-targets" style="display:none" class="field">
+          <label>التصنيفات</label>
+          <div style="max-height:150px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; padding:8px">
+            ${categories.map(c => `<label style="display:flex; gap:8px; padding:4px 0"><input type="checkbox" name="category_ids" value="${c.id}"> ${esc(c.name)}</label>`).join("")}
+          </div>
+        </div>
+        <div class="field" style="grid-column:1/-1"><label>شروط الاستفادة من العرض</label>
+          <textarea name="conditions" rows="3" placeholder="مثال: يشتري 3 ويحصل على الرابع مجاناً — ساري على الفئات المضمّنة فقط"></textarea>
+        </div>
+      </div>
+    `, async (fd) => {
+      const payload = {
+        name: fd.name,
+        discount_type: fd.discount_type,
+        discount_value: parseFloat(fd.discount_value),
+        start_date: fd.start_date,
+        end_date: fd.end_date,
+        apply_to: fd.apply_to,
+        conditions: fd.conditions || null,
+      };
+      if (fd.apply_to === "specific_products") {
+        payload.product_ids = Array.from(document.querySelectorAll('input[name="product_ids"]:checked')).map(el => parseInt(el.value));
+      } else if (fd.apply_to === "specific_categories") {
+        payload.category_ids = Array.from(document.querySelectorAll('input[name="category_ids"]:checked')).map(el => parseInt(el.value));
+      }
+      await api("/api/promotions", { method: "POST", body: JSON.stringify(payload) });
+      toast("تم إضافة العرض بنجاح");
+      load();
+    });
+  };
+
+  window.toggleTargets = (val) => {
+    $("#product-targets").style.display = val === "specific_products" ? "block" : "none";
+    $("#category-targets").style.display = val === "specific_categories" ? "block" : "none";
+  };
+
+  window.editPromo = async (id) => {
+    const p = await api(`/api/promotions/${id}`);
+    const products = (await api("/api/products")).products || [];
+    const categories = (await api("/api/categories")).categories || [];
+    const pProductIds = parseIds(p.product_ids);
+    const pCategoryIds = parseIds(p.category_ids);
+    modal("تعديل العرض", `
+      <div class="form-grid">
+        <div class="field"><label>اسم العرض *</label><input type="text" name="name" value="${esc(p.name)}" required></div>
+        <div class="field"><label>نوع الخصم</label>
+          <select name="discount_type" onchange="$('#disc-val').innerHTML = this.value === 'percentage' ? 'النسبة (%)' : 'المبلغ (ج.س)'">
+            <option value="percentage" ${p.discount_type === 'percentage' ? 'selected' : ''}>نسبة مئوية</option>
+            <option value="fixed" ${p.discount_type === 'fixed' ? 'selected' : ''}>مبلغ ثابت</option>
+          </select>
+        </div>
+        <div class="field"><label id="disc-val">${p.discount_type === 'percentage' ? 'النسبة (%)' : 'المبلغ (ج.س)'}</label><input type="number" step="0.01" name="discount_value" value="${p.discount_value}" required></div>
+        <div class="field"><label>من *</label><input type="date" name="start_date" value="${esc(p.start_date?.slice(0, 10))}" required></div>
+        <div class="field"><label>إلى *</label><input type="date" name="end_date" value="${esc(p.end_date?.slice(0, 10))}" required></div>
+        <div class="field"><label>ينطبق على</label>
+          <select name="apply_to" onchange="toggleTargets(this.value)">
+            <option value="all" ${p.apply_to === 'all' ? 'selected' : ''}>الكل</option>
+            <option value="specific_products" ${p.apply_to === 'specific_products' ? 'selected' : ''}>منتجات محددة</option>
+            <option value="specific_categories" ${p.apply_to === 'specific_categories' ? 'selected' : ''}>تصنيفات محددة</option>
+          </select>
+        </div>
+        <div id="product-targets" style="display:${p.apply_to === 'specific_products' ? 'block' : 'none'}" class="field">
+          <label>المنتجات</label>
+          <div style="max-height:150px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; padding:8px">
+            ${products.map(pr => `<label style="display:flex; gap:8px; padding:4px 0"><input type="checkbox" name="product_ids" value="${pr.id}" ${pProductIds.includes(pr.id) ? 'checked' : ''}> ${esc(pr.name)}</label>`).join("")}
+          </div>
+        </div>
+        <div id="category-targets" style="display:${p.apply_to === 'specific_categories' ? 'block' : 'none'}" class="field">
+          <label>التصنيفات</label>
+          <div style="max-height:150px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; padding:8px">
+            ${categories.map(c => `<label style="display:flex; gap:8px; padding:4px 0"><input type="checkbox" name="category_ids" value="${c.id}" ${pCategoryIds.includes(c.id) ? 'checked' : ''}> ${esc(c.name)}</label>`).join("")}
+          </div>
+        </div>
+        <div class="field" style="grid-column:1/-1"><label>شروط الاستفادة من العرض</label>
+          <textarea name="conditions" rows="3">${esc(p.conditions || "")}</textarea>
+        </div>
+      </div>
+    `, async (fd) => {
+      const payload = {
+        name: fd.name,
+        discount_type: fd.discount_type,
+        discount_value: parseFloat(fd.discount_value),
+        start_date: fd.start_date,
+        end_date: fd.end_date,
+        apply_to: fd.apply_to,
+        conditions: fd.conditions || null,
+      };
+      if (fd.apply_to === "specific_products") {
+        payload.product_ids = Array.from(document.querySelectorAll('input[name="product_ids"]:checked')).map(el => parseInt(el.value));
+      } else if (fd.apply_to === "specific_categories") {
+        payload.category_ids = Array.from(document.querySelectorAll('input[name="category_ids"]:checked')).map(el => parseInt(el.value));
+      }
+      await api(`/api/promotions/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+      toast("تم تعديل العرض بنجاح");
+      load();
+    });
+  };
+
+  window.approvePromo = async (id) => {
+    await api(`/api/promotions/${id}/approve`, { method: "POST" });
+    toast("تم اعتماد العرض وتفعيله");
+    load();
+  };
+
+  window.rejectPromo = async (id) => {
+    await api(`/api/promotions/${id}/reject`, { method: "POST" });
+    toast("تم رفض العرض");
+    load();
+  };
+
+  window.deletePromo = async (id) => {
+    if (!(await showPopupConfirm("هل تريد حذف هذا العرض نهائياً؟", "حذف العرض"))) return;
+    await api(`/api/promotions/${id}`, { method: "DELETE" });
+    toast("تم حذف العرض");
+    load();
+  };
+
+  load();
+});
+
+function parseIds(val) {
+  if (!val) return [];
+  try {
+    const s = String(val).trim().replace(/[\[\]\(\)'"\s]/g, "");
+    return s ? s.split(",").map(x => parseInt(x)).filter(n => !isNaN(n)) : [];
+  } catch { return []; }
+}
+</script>
+</body>
+</html>
+

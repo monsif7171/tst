@@ -1,0 +1,190 @@
+﻿<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="light">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تِــريَــاق — إدارة الورديات والصندوق</title>
+<link rel="stylesheet" href="css/app.css?v=2.3">
+  <link rel="stylesheet" href="css/responsive.css">
+  <link rel="stylesheet" href="css/design-system.css">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<link rel="apple-touch-icon" href="img/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ترياق">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#f2572c"></head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="js/app.js?v=2.2"></script>
+<script>
+boot("إدارة الورديات والصندوق", async (user, el) => {
+  let currentExpected = 0;
+  let currentShiftData = null;
+
+  async function load() {
+    const data = await api("/api/shifts/current");
+    const s = data.shift;
+    currentShiftData = s;
+    if (!s) {
+      el.innerHTML = `
+      <div class="card" style="max-width:500px; margin:40px auto; text-align:center;">
+        <h2 class="panel-title" style="justify-content:center">${icon("clock")} فتح وردية جديدة</h2>
+        <p style="color:var(--muted); margin-bottom:16px;">لا توجد وردية مفتوحة حالياً. يرجى إدخال عهدة افتتاح الصندوق.</p>
+        <div class="field" style="text-align:start; margin-bottom:14px;"><label for="open-cash">العهدة النقدية الافتتاحية</label><input type="number" step="0.01" min="0" id="open-cash" value="0"></div>
+        <button type="button" class="btn primary" style="width:100%; justify-content:center;" onclick="openShift()">فتح الوردية</button>
+      </div>`;
+    } else {
+      currentExpected = parseFloat(s.expected_cash) || 0;
+      el.innerHTML = `
+      <div class="card" style="max-width:600px; margin:20px auto;">
+        <h2 class="panel-title">${icon("clock")} تفاصيل الوردية الحالية</h2>
+        <div class="list" style="margin-bottom:16px;">
+          <div class="list-item"><b>وقت الفتح:</b> <span>${esc(s.opened_at)}</span></div>
+          <div class="list-item"><b>العهدة الافتتاحية:</b> <span class="pill ok">${money(s.opening_cash)}</span></div>
+          <div class="list-item"><b>مبيعات الكاش:</b> <span class="pill info">${money(s.cash_sales)}</span></div>
+          <div class="list-item"><b>المصروفات:</b> <span class="pill danger">${money(s.expenses)}</span></div>
+          <div class="list-item"><b>النقدية المتوقعة بالصندوق:</b> <span class="pill ok" style="font-size:15px;">${money(s.expected_cash)}</span></div>
+        </div>
+        <div class="field" style="margin-bottom:12px;">
+          <label for="close-cash">النقدية الفعلية بالدرج (إغلاق الوردية)</label>
+          <input type="number" step="0.01" min="0" id="close-cash" placeholder="أدخل المبلغ الفعلي الموجود بالدرج" oninput="updateVariancePreview()">
+        </div>
+        <div id="variance-preview" style="display:none; margin-bottom:12px; padding:10px 14px; border-radius:10px; background:var(--bg-secondary); justify-content:space-between; align-items:center; font-weight:600">
+          <span>فارق الصندوق (الزيادة / العجز):</span>
+          <span id="variance-val" class="pill">0.00</span>
+        </div>
+        <div class="field" style="margin-bottom:16px;"><label for="close-note">ملاحظات التقفيل</label><input type="text" id="close-note" placeholder="اختياري"></div>
+        <div style="display:flex; flex-direction:column; gap:8px">
+          <button type="button" class="btn primary" style="width:100%; justify-content:center;" onclick="closeShift()">تقفيل وإغلاق الوردية</button>
+          <button type="button" class="btn" style="width:100%; justify-content:center;" onclick="printShiftSummary(false)">${icon("print")} طباعة تقرير الصندوق (X-Report)</button>
+        </div>
+      </div>`;
+    }
+  }
+
+  window.printShiftSummary = (isClosed = false, closeData = null) => {
+    const s = closeData || currentShiftData;
+    if (!s) return;
+    const nowStr = new Date().toLocaleString("ar-EG", { dateStyle: 'short', timeStyle: 'short' });
+    const diff = parseFloat(s.closing_cash ?? $("#close-cash")?.value ?? currentExpected) - currentExpected;
+    const diffText = Math.abs(diff) < 0.01 ? "مطابق تماماً (0.00)" : (diff > 0 ? `+${money(diff)} (زيادة)` : `${money(diff)} (عجز)`);
+    const actualCash = s.closing_cash ?? (parseFloat($("#close-cash")?.value) || currentExpected);
+
+    const html = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">
+      <style>
+        @page { size: 80mm auto; margin: 0; }
+        body { background: white; margin: 0; padding: 4mm; color: #000; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; font-size: 13px; direction: rtl; width: 72mm; margin: 0 auto; }
+        .logo-box { text-align: center; border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 8px; }
+        .logo-box img { width: 38px; height: 38px; object-fit: contain; margin-bottom: 2px; }
+        .logo-box h2 { margin: 0; font-size: 19px; font-weight: bold; }
+        .logo-box p { margin: 2px 0; font-size: 11px; }
+        .info-p { text-align: center; margin: 2px 0; font-size: 11px; }
+        .row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed #ccc; font-size: 12px; }
+        .row.grand { font-size: 14px; font-weight: bold; border-top: 2px solid #000; border-bottom: 2px solid #000; margin-top: 6px; padding: 6px 0; }
+        .footer { text-align: center; margin-top: 14px; padding-top: 8px; border-top: 1px dashed #000; font-size: 11px; }
+        .sign { margin-top: 20px; display: flex; justify-content: space-between; font-size: 11px; padding-top: 16px; }
+      </style></head>
+      <body>
+        <div class="logo-box">
+          <img src="img/logo.png" alt="ترياق">
+          <h2>تِــريَــاق</h2>
+          <p>${isClosed ? 'تقرير تقفيل وردية نهائي (Z-Report)' : 'تقرير جرد صندوق مؤقت (X-Report)'}</p>
+        </div>
+        <p class="info-p">تاريخ التقرير: <b>${esc(nowStr)}</b></p>
+        <p class="info-p">الكاشير: <b>${esc(user.full_name || user.username)}</b></p>
+        <p class="info-p">وقت الفتح: ${esc(s.opened_at || "-")}</p>
+        ${s.closed_at ? `<p class="info-p">وقت الإغلاق: ${esc(s.closed_at)}</p>` : ""}
+        <div style="margin-top:10px">
+          <div class="row"><span>العهدة الافتتاحية:</span><span>${money(s.opening_cash)}</span></div>
+          <div class="row"><span>مبيعات الكاش:</span><span>${money(s.cash_sales)}</span></div>
+          <div class="row"><span>المصروفات:</span><span>${money(s.expenses)}</span></div>
+          <div class="row grand"><span>المتوقع بالصندوق:</span><span>${money(s.expected_cash)}</span></div>
+          <div class="row"><span>المبلغ الفعلي:</span><span>${money(actualCash)}</span></div>
+          <div class="row"><span>الفارق:</span><span>${diffText}</span></div>
+          ${s.note ? `<div class="row"><span>ملاحظات:</span><span>${esc(s.note)}</span></div>` : ""}
+        </div>
+        <div class="sign">
+          <div>توقيع الكاشير: ............</div>
+          <div>توقيع المستلم: ............</div>
+        </div>
+        <div class="footer">تِــريَــاق v2.0 — نظام إدارة الصيدليات</div>
+      </body></html>`;
+
+    printHtml(html);
+  };
+
+  window.updateVariancePreview = () => {
+    const valStr = $("#close-cash")?.value;
+    const box = $("#variance-preview");
+    const pill = $("#variance-val");
+    if (!box || !pill) return;
+    if (valStr === "" || valStr === undefined) {
+      box.style.display = "none";
+      return;
+    }
+    const actual = parseFloat(valStr) || 0;
+    const diff = actual - currentExpected;
+    box.style.display = "flex";
+    if (Math.abs(diff) < 0.01) {
+      pill.className = "pill ok";
+      pill.textContent = `مطابق تماماً (${money(0)})`;
+    } else if (diff > 0) {
+      pill.className = "pill info";
+      pill.textContent = `+${money(diff)} (زيادة)`;
+    } else {
+      pill.className = "pill danger";
+      pill.textContent = `${money(diff)} (عجز)`;
+    }
+  };
+
+  window.openShift = async () => {
+    const opening_cash = parseFloat($("#open-cash").value) || 0;
+    try {
+      await api("/api/shifts/open", { method: "POST", body: JSON.stringify({ opening_cash }) });
+      toast("تم فتح الوردية بنجاح");
+      load();
+    } catch (err) { toast(err.message, "error"); }
+  };
+
+  window.closeShift = async () => {
+    const closing_cash = parseFloat($("#close-cash").value);
+    if (isNaN(closing_cash)) { toast("يرجى إدخال المبلغ الفعلي بالدرج", "warn"); return; }
+    const diff = closing_cash - currentExpected;
+    const diffLabel = Math.abs(diff) < 0.01 ? "مطابق للمتوقع" : (diff > 0 ? `زيادة ${money(diff)}` : `عجز ${money(Math.abs(diff))}`);
+    if (!(await showPopupConfirm(`هل أنت متأكد من تقفيل وإغلاق الوردية الحالية؟\nالمبلغ الفعلي: ${money(closing_cash)} (${diffLabel})`, "تأكيد إغلاق الوردية"))) return;
+    const note = $("#close-note").value;
+    try {
+      const res = await runWithDeterminateRing({
+        title: "تقفيل وترحيل الوردية الحالية",
+        subtitle: `النقدية الفعلية: ${money(closing_cash)} (${diffLabel})`,
+        iconType: "database",
+        stages: [
+          { pct: 20, label: "مطابقة فواتير المبيعات والمقبوضات بالدرج" },
+          { pct: 50, label: "حساب فوارق العجز والزيادة والترحيل المالي" },
+          { pct: 80, label: "إغلاق جلسة الكاشير وتوليد تقرير (Z-Report)" },
+          { pct: 100, label: "تم تقفيل الوردية وترحيل الصندوق بنجاح" }
+        ],
+        successMessage: "تم إغلاق الوردية بنجاح!",
+        holdSuccessMs: 1400,
+        action: async () => {
+          return await api("/api/shifts/close", { method: "POST", body: JSON.stringify({ closing_cash, note }) });
+        }
+      });
+      toast(`تم إغلاق الوردية. المتوقع: ${money(res.expected)} | العجز/الزيادة: ${money(res.variance)}`);
+      const closedSnapshot = {
+        ...currentShiftData,
+        closing_cash,
+        note,
+        closed_at: new Date().toLocaleString("ar-EG", { dateStyle: 'short', timeStyle: 'short' })
+      };
+      printShiftSummary(true, closedSnapshot);
+      load();
+    } catch (err) { toast(err.message, "error"); }
+  };
+
+  load();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,624 @@
+﻿<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="light">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>تِــريَــاق — الرئيسية</title>
+<link rel="stylesheet" href="css/app.css?v=2.3">
+  <link rel="stylesheet" href="css/responsive.css">
+  <link rel="stylesheet" href="css/design-system.css">
+<style>
+  .dash-filter-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    background: var(--card);
+    padding: 10px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    margin-bottom: 14px;
+  }
+  .dash-filter-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .dash-filter-title svg { width: 17px; height: 17px; color: var(--primary); }
+  .dash-tabs {
+    display: inline-flex;
+    align-items: center;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 3px;
+    gap: 4px;
+  }
+  .dash-tab-btn {
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 14px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: all .16s ease;
+  }
+  .dash-tab-btn:hover { color: var(--text); }
+  .dash-tab-btn.active {
+    background: var(--primary);
+    color: var(--on-primary);
+    font-weight: 700;
+    box-shadow: 0 2px 6px color-mix(in srgb, var(--primary) 28%, transparent);
+  }
+  .dash-tabs.loading { pointer-events: none; opacity: 0.6; }
+  .kpi-loading { opacity: 0.45; transition: opacity 0.15s ease; }
+  @media(max-width: 640px) {
+    .dash-filter-bar { flex-direction: column; align-items: stretch; gap: 8px; }
+    .dash-tabs { display: flex; width: 100%; justify-content: space-between; }
+    .dash-tab-btn { flex: 1; text-align: center; padding: 6px 4px; }
+  }
+
+  /* Dashboard card headers */
+  .dash-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .dash-card-header h2.panel-title {
+    margin: 0;
+  }
+  .dash-card-link {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--primary);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .dash-card-link:hover { text-decoration: underline; }
+
+  /* Computer / Desktop View Specific Adjustments for Stock & Supplier Cards */
+  @media (min-width: 981px) {
+    .dash-stock-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 16px;
+      align-items: stretch;
+      margin-top: 14px;
+    }
+    @media (min-width: 1240px) {
+      .dash-stock-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    .dash-stock-grid .card {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 16px 16px 12px;
+    }
+
+    /* Completely eliminate horizontal scrolling on desktop */
+    .dash-stock-grid .table-wrap {
+      overflow-x: hidden !important;
+      width: 100% !important;
+      margin-bottom: 0;
+      flex: 1;
+    }
+
+    .dash-stock-grid .table-wrap table {
+      min-width: 0 !important;
+      width: 100% !important;
+      table-layout: fixed;
+    }
+
+    .dash-stock-grid th,
+    .dash-stock-grid td {
+      padding: 7px 5px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .dash-stock-grid th:first-child,
+    .dash-stock-grid td:first-child {
+      padding-inline-start: 2px;
+    }
+
+    .dash-stock-grid th:last-child,
+    .dash-stock-grid td:last-child {
+      padding-inline-end: 2px;
+    }
+
+    /* Column Widths & Alignments in Desktop View */
+    /* Low stock columns (الدواء، الفرع، المتاح، الحد) */
+    #low-stock-area table th:nth-child(1), #low-stock-area table td:nth-child(1) { width: 44%; }
+    #low-stock-area table th:nth-child(2), #low-stock-area table td:nth-child(2) { width: 26%; text-align: center; }
+    #low-stock-area table th:nth-child(3), #low-stock-area table td:nth-child(3) { width: 15%; text-align: center; }
+    #low-stock-area table th:nth-child(4), #low-stock-area table td:nth-child(4) { width: 15%; text-align: center; }
+
+    /* Non-admin Low stock columns (الدواء، المتاح، الحد) */
+    #low-stock-area table:not(:has(th:nth-child(4))) th:nth-child(1), #low-stock-area table:not(:has(th:nth-child(4))) td:nth-child(1) { width: 56%; }
+    #low-stock-area table:not(:has(th:nth-child(4))) th:nth-child(2), #low-stock-area table:not(:has(th:nth-child(4))) td:nth-child(2) { width: 22%; text-align: center; }
+    #low-stock-area table:not(:has(th:nth-child(4))) th:nth-child(3), #low-stock-area table:not(:has(th:nth-child(4))) td:nth-child(3) { width: 22%; text-align: center; }
+
+    /* Expiring soon columns (الدواء، الفرع، الصلاحية، الكمية) */
+    #expiring-area table th:nth-child(1), #expiring-area table td:nth-child(1) { width: 40%; }
+    #expiring-area table th:nth-child(2), #expiring-area table td:nth-child(2) { width: 24%; text-align: center; }
+    #expiring-area table th:nth-child(3), #expiring-area table td:nth-child(3) { width: 21%; text-align: center; }
+    #expiring-area table th:nth-child(4), #expiring-area table td:nth-child(4) { width: 15%; text-align: center; }
+
+    /* Non-admin Expiring soon columns (الدواء، الصلاحية، الكمية) */
+    #expiring-area table:not(:has(th:nth-child(4))) th:nth-child(1), #expiring-area table:not(:has(th:nth-child(4))) td:nth-child(1) { width: 50%; }
+    #expiring-area table:not(:has(th:nth-child(4))) th:nth-child(2), #expiring-area table:not(:has(th:nth-child(4))) td:nth-child(2) { width: 30%; text-align: center; }
+    #expiring-area table:not(:has(th:nth-child(4))) th:nth-child(3), #expiring-area table:not(:has(th:nth-child(4))) td:nth-child(3) { width: 20%; text-align: center; }
+
+    /* Supplier dues columns (المورد، المبلغ) */
+    #supplier-dues-area table th:nth-child(1), #supplier-dues-area table td:nth-child(1) { width: 56%; }
+    #supplier-dues-area table th:nth-child(2), #supplier-dues-area table td:nth-child(2) { width: 44%; text-align: left; }
+
+    /* Truncation & compact badges */
+    .dash-cell-name {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 600;
+    }
+    .dash-pill-compact {
+      display: inline-block;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding: 1px 6px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .dash-badge-danger {
+      display: inline-block;
+      background: color-mix(in srgb, var(--danger) 14%, transparent);
+      color: var(--danger);
+      padding: 1px 6px;
+      border-radius: 999px;
+      font-size: 11.5px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .dash-badge-warn {
+      display: inline-block;
+      background: color-mix(in srgb, var(--warn) 16%, transparent);
+      color: var(--warn);
+      padding: 1px 6px;
+      border-radius: 999px;
+      font-size: 11.5px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .dash-num-muted {
+      color: var(--muted);
+      font-size: 11.5px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .dash-date-text {
+      font-size: 11.5px;
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+    }
+    .dash-due-pill {
+      font-size: 11.5px;
+      font-weight: 700;
+      padding: 2px 7px;
+    }
+  }
+</style>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<link rel="apple-touch-icon" href="img/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ترياق">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#f2572c"></head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="js/app.js?v=2.2"></script>
+<script>
+boot("الرئيسية", async (user, el) => {
+  const isAdmin = user.role === "admin";
+  let currentPeriod = "today";
+  let dashboardCache = {}; // Cache period data for instant tab switching
+
+  const periodLabels = {
+    today: "اليوم",
+    week: "هذا الأسبوع",
+    month: "هذا الشهر",
+    year: "هذه السنة"
+  };
+
+  // Initial full page skeleton
+  el.innerHTML = `
+  <div class="dash-filter-bar">
+    <div class="dash-filter-title">${icon("wallet")}<span id="dash-filter-heading">المؤشرات المالية (اليوم)</span></div>
+    <div class="dash-tabs" id="dash-tabs">
+      <button type="button" class="dash-tab-btn active" data-period="today">اليوم</button>
+      <button type="button" class="dash-tab-btn" data-period="week">هذا الأسبوع</button>
+      <button type="button" class="dash-tab-btn" data-period="month">هذا الشهر</button>
+      <button type="button" class="dash-tab-btn" data-period="year">هذه السنة</button>
+    </div>
+  </div>
+
+  <div class="cards" id="kpi-cards-row">
+    ${cardSkeletonHTML(5)}
+  </div>
+
+  <div id="payment-methods-row" class="cards" style="margin-bottom:16px"></div>
+
+  <div class="grid-2">
+    <div class="card"><h2 class="panel-title">${icon("chart")} <span id="chart-card-title">المبيعات خلال الأسبوع</span></h2>
+      <div id="week-chart"><div style="height:200px; display:flex; align-items:center; justify-content:center"><span class="skeleton-bone skeleton-shimmer" style="width:90%; height:160px; border-radius:12px"></span></div></div></div>
+    <div class="card"><h2 class="panel-title">${icon("bell")} تنبيهات مهمة</h2>
+      <div class="list" id="alerts-list">
+        <div class="skeleton-bone skeleton-shimmer" style="width:100%; height:38px; border-radius:8px; margin-bottom:8px"></div>
+        <div class="skeleton-bone skeleton-shimmer" style="width:100%; height:38px; border-radius:8px; margin-bottom:8px"></div>
+        <div class="skeleton-bone skeleton-shimmer" style="width:100%; height:38px; border-radius:8px; margin-bottom:8px"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="branches-card-area"></div>
+
+  <div class="grid-2">
+    <div class="card"><h2 class="panel-title">${icon("clock")} أحدث الفواتير</h2>
+      <div id="recent-sales-area">${tableSkeletonHTML(4, 4)}</div></div>
+    <div class="card"><h2 class="panel-title">${icon("pill")} <span id="top-prods-title">الأكثر مبيعاً</span></h2>
+      <div class="list" id="top-prods-area">${tableSkeletonHTML(3, 4)}</div></div>
+  </div>
+
+  <div class="grid-3 dash-stock-grid">
+    <div class="card">
+      <div class="dash-card-header">
+        <h2 class="panel-title">${icon("alert")} مخزون منخفض</h2>
+        <a href="products.html" class="dash-card-link">عرض الكل</a>
+      </div>
+      <div id="low-stock-area">${tableSkeletonHTML(isAdmin ? 4 : 3, 5)}</div>
+    </div>
+    <div class="card">
+      <div class="dash-card-header">
+        <h2 class="panel-title">${icon("clock")} قرب الانتهاء</h2>
+        <a href="products.html" class="dash-card-link">عرض الكل</a>
+      </div>
+      <div id="expiring-area">${tableSkeletonHTML(isAdmin ? 4 : 3, 5)}</div>
+    </div>
+    <div class="card">
+      <div class="dash-card-header">
+        <h2 class="panel-title">${icon("users")} مستحقات الموردين</h2>
+        <a href="suppliers.html" class="dash-card-link">عرض الكل</a>
+      </div>
+      <div id="supplier-dues-area">${tableSkeletonHTML(2, 5)}</div>
+    </div>
+  </div>`;
+
+  function renderFinancialSection(d, period) {
+    const t = d.today || d.financial || {};
+    const periodLabel = periodLabels[period] || "اليوم";
+    const delta = (period === "today" && d.yesterday_sales > 0)
+      ? Math.round(((t.sales - d.yesterday_sales) / d.yesterday_sales) * 100)
+      : null;
+
+    // 1. Update filter bar title and active tab button
+    const heading = document.getElementById("dash-filter-heading");
+    if (heading) heading.textContent = `المؤشرات المالية (${periodLabel})`;
+
+    $$(".dash-tab-btn", el).forEach((b) => {
+      b.classList.toggle("active", b.dataset.period === period);
+    });
+
+    // 2. Render KPI cards
+    const kpiRow = document.getElementById("kpi-cards-row");
+    if (kpiRow) {
+      kpiRow.classList.remove("kpi-loading");
+      kpiRow.innerHTML = `
+        <div class="card kpi"><span class="ico green">${icon("cash")}</span>
+          <div><small>مبيعات ${periodLabel}</small><b>${money(t.sales || 0)}</b>
+          ${delta !== null ? `<div class="delta ${delta >= 0 ? "up" : "down"}">${delta >= 0 ? "▲" : "▼"} ${Math.abs(delta)}% عن الأمس</div>` : ""}</div></div>
+        <div class="card kpi"><span class="ico blue">${icon("cart")}</span>
+          <div><small>عدد الفواتير</small><b>${fmt(t.invoices || 0)}</b></div></div>
+        <div class="card kpi"><span class="ico green">${icon("chart")}</span>
+          <div><small>صافي الربح</small><b>${money(t.profit || 0)}</b><span class="sub">قبل المصروفات</span></div></div>
+        <div class="card kpi"><span class="ico ${(t.net_profit || 0) >= 0 ? 'green' : 'red'}">${icon("wallet")}</span>
+          <div><small>صافي الربح التقديري</small><b>${money(t.net_profit || 0)}</b><span class="sub">بعد خصم المصروفات</span></div></div>
+        <div class="card kpi"><span class="ico amber">${icon("wallet")}</span>
+          <div><small>مصروفات ${periodLabel}</small><b>${money(t.expenses || 0)}</b></div></div>`;
+    }
+
+    // 3. Render Payment Methods breakdown
+    const pmRow = document.getElementById("payment-methods-row");
+    if (pmRow) {
+      pmRow.classList.remove("kpi-loading");
+      const pms = d.payment_methods || [];
+      const imgMap = {
+        'bankak': 'img/bankak.jpg',
+        'fawry': 'img/fawry.png',
+        'ocash': 'img/ocash.png',
+        'bravo': 'img/bravo.png'
+      };
+      const labelMap = {
+        'cash': 'نقداً',
+        'bankak': 'بنكك',
+        'fawry': 'فوري',
+        'ocash': 'أوكاش',
+        'bravo': 'برافو'
+      };
+
+      if (!pms.length) {
+        pmRow.innerHTML = `
+          <div class="card kpi" style="grid-column: 1 / -1; justify-content: center; text-align: center; padding: 12px; color: var(--muted)">
+            لا توجد مدفوعات مسجلة خلال ${periodLabel}
+          </div>`;
+      } else {
+        pmRow.innerHTML = pms.map((pm) => {
+          const imgSrc = imgMap[pm.method];
+          return `
+          <div class="card kpi">
+            <span class="ico ${pm.method === 'cash' ? 'green' : 'blue'}">
+              ${imgSrc ? `<img src="${imgSrc}" style="width:24px; height:24px; object-fit:contain">` : icon("cash")}
+            </span>
+            <div><small>${labelMap[pm.method] || esc(pm.method || '')} (${periodLabel})</small><b>${money(pm.total || 0)}</b></div>
+          </div>`;
+        }).join('');
+      }
+    }
+
+    // 4. Render Chart Trend
+    const chartCardTitle = document.getElementById("chart-card-title");
+    if (chartCardTitle) {
+      chartCardTitle.textContent = period === "today"
+        ? "المبيعات خلال الأسبوع"
+        : `حركة المبيعات (${periodLabel})`;
+    }
+    const days = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+    const trendPts = (d.trend || d.week || []).map((w) => {
+      let lbl = w.day;
+      if (period === "year") {
+        const parts = String(w.day).split("-");
+        lbl = parts.length > 1 ? `شهر ${parts[1]}` : w.day;
+      } else if (w.day && w.day.includes("-")) {
+        const dObj = new Date(w.day + "T12:00");
+        lbl = days[dObj.getDay()] || w.day.slice(5);
+      }
+      return { label: lbl, value: w.total || 0 };
+    });
+    const chartEl = document.getElementById("week-chart");
+    if (chartEl) {
+      lineChart(chartEl, trendPts.length ? trendPts : [{ label: periodLabel, value: t.sales || 0 }]);
+    }
+
+    // 5. Render Top Products for this period
+    const topProdsTitle = document.getElementById("top-prods-title");
+    if (topProdsTitle) topProdsTitle.textContent = `الأكثر مبيعاً (${periodLabel})`;
+    const topProdsArea = document.getElementById("top-prods-area");
+    if (topProdsArea) {
+      topProdsArea.innerHTML = d.top_products && d.top_products.length
+        ? d.top_products.slice(0, 5).map((p) => `
+            <div class="list-item">
+              <b>${esc(p.name)}</b>
+              <span class="sub">${fmt(p.qty)} وحدة</span>
+              <span class="pill ok">${money(p.total)}</span>
+            </div>`).join("")
+        : `<div class="empty">لا مبيعات مسجلة خلال ${periodLabel}</div>`;
+    }
+  }
+
+  function renderStaticSectionsOnce(d) {
+    // Alerts
+    const alertsList = document.getElementById("alerts-list");
+    if (alertsList) {
+      alertsList.innerHTML = `
+        <a href="products.html" class="list-item"><span class="pill danger">${d.low_stock.length}</span><b>أدوية منخفضة المخزون</b><span class="sub">تحتاج إعادة طلب</span></a>
+        <a href="products.html" class="list-item"><span class="pill warn">${d.expiring_soon.length}</span><b>أدوية قريبة من الانتهاء</b><span class="sub">خلال 30 يوم</span></a>
+        <a href="products.html" class="list-item"><span class="pill info">${d.expired_count || 0}</span><b>أدوية منتهية الصلاحية</b><span class="sub">يجب سحبها</span></a>
+        ${d.pending_requests_count > 0 ? `
+        <a href="requests.html" class="list-item" style="background:color-mix(in srgb, var(--primary) 8%, var(--card))">
+          <span class="pill ok">${d.pending_requests_count}</span>
+          <b>طلبات أدوية غير متوفرة</b>
+          <span class="sub">تنبيه: هناك طلبات جديدة مسجلة</span>
+        </a>` : ""}
+        <a href="suppliers.html" class="list-item" style="grid-column:1/-1;background:var(--bg-secondary);border-radius:10px;padding:12px 14px">
+          <span class="pill warn">${money(d.supplier_dues_total)}</span><b>مستحقات الموردين</b>
+          <span class="sub">إجمالي الديون المستحقة — ${d.supplier_dues.filter(s=>s.due>0).length} مورد</span>
+        </a>`;
+    }
+
+    // Branches
+    const branchesArea = document.getElementById("branches-card-area");
+    if (branchesArea && d.branches && d.branches.length) {
+      branchesArea.innerHTML = `
+        <div class="card" style="margin-top:16px"><h2 class="panel-title">${icon("box")} فروع اليوم</h2>
+          <div class="cards">${d.branches.slice(0, 5).map((b) => `<div class="list-item" style="justify-content:space-between">
+            <b>${esc(b.name)}</b><span class="pill ok">${money(b.today_total)}</span></div>`).join("")}</div></div>`;
+    }
+
+    // Recent Sales
+    const recentSalesArea = document.getElementById("recent-sales-area");
+    if (recentSalesArea) {
+      recentSalesArea.innerHTML = tableHTML([
+        { label: "#", render: (r) => esc(r.invoice_no) },
+        { label: "التاريخ", render: (r) => esc((r.sale_date || "").slice(0, 16)) },
+        { label: "الإجمالي", key: "total", num: true, render: (r) => money(r.total) },
+        { label: "الدفع", key: "payment_method" },
+        { label: "طباعة", render: (r) => `<button type="button" class="btn sm" onclick="printRecentInvoice(${r.id})" title="طباعة الفاتورة">${icon("print")}</button>` },
+      ], d.recent_sales.slice(0, 5));
+    }
+
+    // Low stock
+    const lowStockArea = document.getElementById("low-stock-area");
+    if (lowStockArea) {
+      lowStockArea.innerHTML = tableHTML([
+        { label: "الدواء", render: (r) => `<span class="dash-cell-name" title="${esc(r.name)}">${esc(r.name)}</span>` },
+        ...(isAdmin ? [{ label: "الفرع", render: (r) => `<span class="pill info dash-pill-compact" title="${esc(r.branch_name || "-")}">${esc(r.branch_name || "-")}</span>` }] : []),
+        { label: "المتاح", key: "qty", num: true, render: (r) => `<span class="dash-badge-danger">${fmt(r.qty)}</span>` },
+        { label: "الحد", key: "min_qty", num: true, render: (r) => `<span class="dash-num-muted">${fmt(r.min_qty)}</span>` }
+      ], d.low_stock.slice(0, 5), "المخزون كافٍ — لا توجد نواقص");
+    }
+
+    // Expiring soon
+    const expiringArea = document.getElementById("expiring-area");
+    if (expiringArea) {
+      expiringArea.innerHTML = tableHTML([
+        { label: "الدواء", render: (r) => `<span class="dash-cell-name" title="${esc(r.name)}">${esc(r.name)}</span>` },
+        ...(isAdmin ? [{ label: "الفرع", render: (r) => `<span class="pill info dash-pill-compact" title="${esc(r.branch_name || "-")}">${esc(r.branch_name || "-")}</span>` }] : []),
+        { label: "الصلاحية", key: "expiry_date", render: (r) => `<span class="dash-date-text">${esc(r.expiry_date || "-")}</span>` },
+        { label: "الكمية", key: "qty", num: true, render: (r) => `<span class="dash-badge-warn">${fmt(r.qty)}</span>` }
+      ], d.expiring_soon.slice(0, 5), "لا توجد أدوية قريبة من الانتهاء");
+    }
+
+    // Supplier dues
+    const supplierDuesArea = document.getElementById("supplier-dues-area");
+    if (supplierDuesArea) {
+      supplierDuesArea.innerHTML = tableHTML([
+        { label: "المورد", render: (r) => `<span class="dash-cell-name" title="${esc(r.name)}"><b>${esc(r.name)}</b></span>` },
+        { label: "المبلغ", key: "due", num: true, render: (r) => `<span class="pill warn dash-due-pill">${money(r.due)}</span>` }
+      ], d.supplier_dues.filter((s) => s.due > 0).slice(0, 5), "لا توجد مستحقات معلقة للموردين");
+    }
+  }
+
+  window.printRecentInvoice = async (id) => {
+    try {
+      const s = await api(`/api/sales/${id}`);
+      if (!s || s.error) throw new Error(s?.error || "الفاتورة غير موجودة");
+      const items = s.items || [];
+      const itemsHtml = items.map(it => `
+        <tr>
+          <td style="text-align:right; padding:3px 2px">${esc(it.name || "دواء")}</td>
+          <td style="text-align:center; padding:3px 2px">${fmt(it.qty)}</td>
+          <td style="text-align:center; padding:3px 2px">${money(it.price)}</td>
+          <td style="text-align:left; padding:3px 2px">${money(it.line_total || (it.price * it.qty))}</td>
+        </tr>
+      `).join("");
+
+      const methodMap = { cash: "نقداً", bankak: "بنكك", fawry: "فوري", ocash: "أوكاش", bravo: "برافو", card: "بطاقة مصرفية" };
+      const pm = s.payments || [];
+      const payRows = pm.length > 0
+        ? pm.map(m => `<div class="totals-row"><span>${esc(methodMap[m.method] || m.method)}:</span><span>${money(m.amount)}</span></div>`).join("")
+        : `<div class="totals-row"><span>المدفوع:</span><span>${money(s.paid || s.total)}</span></div>`;
+
+      const changeVal = Math.max(0, (s.paid || 0) - (s.total || 0));
+      const dateStr = s.sale_date ? new Date(s.sale_date).toLocaleString("ar-EG", { dateStyle: 'short', timeStyle: 'short' }) : new Date().toLocaleString("ar-EG", { dateStyle: 'short', timeStyle: 'short' });
+
+      const html = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">
+        <style>
+          @page { size: 80mm auto; margin: 0; }
+          body { background: white; margin: 0; padding: 4mm; color: #000; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; font-size: 13px; direction: rtl; width: 72mm; margin: 0 auto; }
+          .logo-box { text-align: center; border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 8px; }
+          .logo-box img { width: 38px; height: 38px; object-fit: contain; margin-bottom: 2px; }
+          .logo-box h2 { margin: 0; font-size: 19px; font-weight: bold; }
+          .logo-box p { margin: 2px 0; font-size: 11px; }
+          .info-p { text-align: center; margin: 2px 0; font-size: 11px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 12px; }
+          th { border-bottom: 2px solid #000; padding: 4px 2px; font-size: 12px; }
+          td { border-bottom: 1px dashed #ccc; padding: 3px 2px; }
+          .totals { border-top: 2px solid #000; padding-top: 6px; font-size: 12px; margin-top: 6px; }
+          .totals-row { display: flex; justify-content: space-between; margin-bottom: 3px; }
+          .totals-row.grand { font-size: 14px; font-weight: bold; border-top: 1px solid #000; padding-top: 4px; margin-top: 4px; }
+          .footer { text-align: center; margin-top: 14px; padding-top: 8px; border-top: 1px dashed #000; font-size: 11px; }
+        </style></head>
+        <body>
+          <div class="logo-box">
+            <img src="img/logo.png" alt="ترياق">
+            <h2>تِــريَــاق</h2>
+            <p>نظام إدارة الصيدلية الذكي</p>
+          </div>
+          <p class="info-p">${esc(dateStr)}</p>
+          <p class="info-p">فاتورة رقم: <b>${esc(s.invoice_no)}</b></p>
+          <table>
+            <thead><tr>
+              <th style="width:42%; text-align:right">الصنف</th>
+              <th style="width:14%; text-align:center">الكمية</th>
+              <th style="width:20%; text-align:center">السعر</th>
+              <th style="width:24%; text-align:left">الإجمالي</th>
+            </tr></thead>
+            <tbody>${itemsHtml}</tbody>
+          </table>
+          <div class="totals">
+            <div class="totals-row"><span>المجموع الفرعي:</span><span>${money(s.subtotal || s.total)}</span></div>
+            ${(s.subtotal || s.total) > s.total ? `<div class="totals-row"><span>الخصم:</span><span>-${money((s.subtotal || s.total) - s.total)}</span></div>` : ""}
+            <div class="totals-row grand"><span>الإجمالي:</span><span>${money(s.total)}</span></div>
+            ${payRows}
+            ${changeVal > 0 ? `<div class="totals-row"><span>الباقي:</span><span>${money(changeVal)}</span></div>` : ""}
+          </div>
+          <div class="footer">شكراً لتعاملكم معنا<br>تِــريَــاق v2.0</div>
+        </body></html>`;
+
+      printHtml(html);
+    } catch (e) {
+      toast("تعذر طباعة الفاتورة: " + (e.message || "خطأ"), "error");
+    }
+  };
+
+  async function switchPeriod(period) {
+    if (period === currentPeriod && dashboardCache[period]) return;
+    currentPeriod = period;
+
+    // If cached, render in 0 milliseconds!
+    if (dashboardCache[period]) {
+      renderFinancialSection(dashboardCache[period], period);
+      return;
+    }
+
+    // Indicate light loading without destroying the page
+    const tabs = document.getElementById("dash-tabs");
+    const kpiRow = document.getElementById("kpi-cards-row");
+    const pmRow = document.getElementById("payment-methods-row");
+    if (tabs) tabs.classList.add("loading");
+    if (kpiRow) kpiRow.classList.add("kpi-loading");
+    if (pmRow) pmRow.classList.add("kpi-loading");
+
+    try {
+      const d = await api(`/api/dashboard?period=${period}`);
+      dashboardCache[period] = d;
+      renderFinancialSection(d, period);
+    } catch (e) {
+      toast(e.message || "تعذر تحميل البيانات", "error");
+    } finally {
+      if (tabs) tabs.classList.remove("loading");
+      if (kpiRow) kpiRow.classList.remove("kpi-loading");
+      if (pmRow) pmRow.classList.remove("kpi-loading");
+    }
+  }
+
+  // Bind tab clicks (delegated)
+  document.getElementById("dash-tabs")?.addEventListener("click", (e) => {
+    const btn = e.target.closest(".dash-tab-btn");
+    if (btn && btn.dataset.period) {
+      switchPeriod(btn.dataset.period);
+    }
+  });
+
+  // Initial load
+  try {
+    const d = await api("/api/dashboard?period=today");
+    dashboardCache["today"] = d;
+    renderFinancialSection(d, "today");
+    renderStaticSectionsOnce(d);
+
+    if (canAnimate() && window.innerWidth > 768) {
+      gsap.from(".kpi", { duration: 0.45, y: 16, opacity: 0, stagger: 0.08, ease: "power2.out" });
+      gsap.from(".grid-2 > .card", { duration: 0.5, y: 20, opacity: 0, stagger: 0.12, delay: 0.2, ease: "power2.out" });
+      gsap.from(".grid-3 > .card", { duration: 0.5, y: 20, opacity: 0, stagger: 0.1, delay: 0.35, ease: "power2.out" });
+    }
+  } catch (e) {
+    toast(e.message || "حدث خطأ أثناء تحميل لوحة التحكم", "error");
+  }
+});
+</script>
+</body>
+</html>
+

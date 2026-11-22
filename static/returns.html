@@ -1,0 +1,234 @@
+﻿<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="light">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تِــريَــاق — المرتجعات</title>
+<link rel="stylesheet" href="css/app.css?v=2.3">
+  <link rel="stylesheet" href="css/responsive.css">
+  <link rel="stylesheet" href="css/design-system.css">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<link rel="apple-touch-icon" href="img/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ترياق">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#f2572c"></head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="js/app.js?v=2.2"></script>
+<script>
+boot("مرتجعات العملاء", async (user, el) => {
+  el.innerHTML = `
+  <div class="card">
+    <h2 class="panel-title">${icon("refresh")} تسجيل مرتجعات مبيعات</h2>
+    <div class="toolbar" style="margin-bottom:14px">
+        <div class="field" style="flex:1">
+            <label for="ret-invoice">رقم الفاتورة *</label>
+            <div style="display:flex; gap:8px">
+                <div class="input-camera-wrap" style="flex:1">
+                    <input type="text" id="ret-invoice" placeholder="مثال: INV-1-000051" required>
+                    <button type="button" class="btn-camera-scan" title="مسح باركود/QR الفاتورة بالكاميرا" onclick="openCameraScanner(c => { const inp = $('#ret-invoice'); if(inp){ inp.value = c; fetchInvoice(); } }, {title: 'مسح باركود الفاتورة'})">${icon("camera")}</button>
+                </div>
+                <button type="button" class="btn primary" onclick="fetchInvoice()">${icon("search")} بحث</button>
+            </div>
+        </div>
+    </div>
+    <div id="invoice-info" style="display:none; border-top:1px solid var(--border); padding-top:14px; margin-top:10px">
+        <div class="form-grid" style="margin-bottom:14px">
+            <div class="field"><label>العميل</label><input type="text" id="cust-name" disabled></div>
+            <div class="field"><label>التاريخ</label><input type="text" id="sale-date" disabled></div>
+        </div>
+        <div class="table-wrap">
+        <table id="items-table">
+            <thead>
+                <tr><th>الدواء</th><th>سعر الوحدة</th><th>الكمية المباعة</th><th>المرتجع سابقاً</th><th>المتاح للإرجاع</th><th>كمية الإرجاع الآن</th></tr>
+            </thead>
+            <tbody id="items-body"></tbody>
+        </table>
+        </div>
+        <div style="margin-top:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; background:var(--bg-secondary); padding:12px 16px; border-radius:10px">
+            <div style="font-weight:700">إجمالي مبلغ الاسترداد المتوقع: <span id="refund-preview" style="color:var(--primary); font-size:16px">${money(0)}</span></div>
+            <button type="button" class="btn primary" onclick="submitBulkReturn()">إتمام المرتجع</button>
+        </div>
+    </div>
+  </div>
+  <div class="card" id="recent-invoices-card" style="display:none">
+    <h2 class="panel-title">${icon("clock")} أحدث فواتير المبيعات (اضغط لاختيار الفاتورة)</h2>
+    <div id="recent-invoices-list"></div>
+  </div>`;
+
+  $("#ret-invoice").onkeydown = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      window.fetchInvoice();
+    }
+  };
+
+  window.calcRefundPreview = () => {
+    let total = 0;
+    $$(".ret-qty").forEach((input) => {
+      const qty = Math.max(0, parseFloat(input.value) || 0);
+      const price = parseFloat(input.dataset.price) || 0;
+      total += qty * price;
+    });
+    const elPrev = $("#refund-preview");
+    if (elPrev) elPrev.textContent = money(total);
+    return total;
+  };
+
+  window.selectInvoiceNo = (invNo) => {
+    $("#ret-invoice").value = invNo;
+    window.fetchInvoice();
+  };
+
+  async function loadRecentInvoices() {
+    try {
+      const d = await api("/api/dashboard");
+      const recent = d.recent_sales || [];
+      if (recent.length) {
+        $("#recent-invoices-card").style.display = "block";
+        $("#recent-invoices-list").innerHTML = tableHTML([
+          { label: "رقم الفاتورة", render: (r) => `<b>${esc(r.invoice_no)}</b>` },
+          { label: "التاريخ", render: (r) => esc((r.sale_date || "").slice(0, 16)) },
+          { label: "الإجمالي", key: "total", num: true, render: (r) => money(r.total) },
+          { label: "طريقة الدفع", key: "payment_method" },
+          { label: "إجراء", render: (r) => `<button type="button" class="btn sm" onclick="selectInvoiceNo('${esc(r.invoice_no)}')">اختيار الفاتورة</button>` },
+        ], recent);
+      }
+    } catch {}
+  }
+
+  window.fetchInvoice = async () => {
+    const inv = ($("#ret-invoice").value || "").trim();
+    if (!inv) { toast("يرجى إدخال رقم الفاتورة", "warn"); return; }
+    try {
+      const s = await api(`/api/sales/invoice/${encodeURIComponent(inv)}`);
+      $("#invoice-info").style.display = "block";
+      $("#ret-invoice").dataset.saleId = s.id;
+      $("#cust-name").value = s.customer_name || "عميل نقدي";
+      $("#sale-date").value = s.sale_date;
+
+      const tbody = $("#items-body");
+      const availItems = (s.items || []).filter(it => it.available_qty > 0);
+      if (!availItems.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty">تم إرجاع جميع أصناف هذه الفاتورة مسبقاً</td></tr>';
+      } else {
+        tbody.innerHTML = availItems.map(it => `
+          <tr>
+            <td><b>${esc(it.name)}</b>${it.instructions ? `<div style="font-size:11px; color:var(--muted); margin-top:2px">💊 ${esc(it.instructions)}</div>` : ""}</td>
+            <td>${money(it.price || 0)}</td>
+            <td>${fmt(it.qty)}</td>
+            <td>${fmt(it.returned_qty)}</td>
+            <td><span class="pill ok">${fmt(it.available_qty)}</span></td>
+            <td><input type="number" class="ret-qty" data-pid="${it.product_id}" data-price="${it.price || 0}" value="0" min="0" max="${it.available_qty}" style="width:90px" oninput="calcRefundPreview()"></td>
+          </tr>
+        `).join("");
+      }
+      calcRefundPreview();
+    } catch(e) { toast("لم يتم العثور على الفاتورة", "error"); }
+  };
+
+  window.printReturnVoucher = (invNo, cust, retItems, refundVal) => {
+    const nowStr = new Date().toLocaleString("ar-EG", { dateStyle: 'short', timeStyle: 'short' });
+    const rowsHtml = retItems.map(it => `
+      <tr>
+        <td style="text-align:right; padding:3px 2px">${esc(it.name)}</td>
+        <td style="text-align:center; padding:3px 2px">${fmt(it.qty)}</td>
+        <td style="text-align:center; padding:3px 2px">${money(it.price)}</td>
+        <td style="text-align:left; padding:3px 2px">${money(it.qty * it.price)}</td>
+      </tr>
+    `).join("");
+
+    const html = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">
+      <style>
+        @page { size: 80mm auto; margin: 0; }
+        body { background: white; margin: 0; padding: 4mm; color: #000; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; font-size: 13px; direction: rtl; width: 72mm; margin: 0 auto; }
+        .logo-box { text-align: center; border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 8px; }
+        .logo-box img { width: 38px; height: 38px; object-fit: contain; margin-bottom: 2px; }
+        .logo-box h2 { margin: 0; font-size: 19px; font-weight: bold; }
+        .logo-box p { margin: 2px 0; font-size: 11px; }
+        .info-p { text-align: center; margin: 2px 0; font-size: 11px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 12px; }
+        th { border-bottom: 2px solid #000; padding: 4px 2px; font-size: 12px; }
+        td { border-bottom: 1px dashed #ccc; padding: 3px 2px; }
+        .totals { border-top: 2px solid #000; padding-top: 6px; font-size: 13px; margin-top: 6px; }
+        .totals-row { display: flex; justify-content: space-between; margin-bottom: 3px; font-weight: bold; }
+        .footer { text-align: center; margin-top: 14px; padding-top: 8px; border-top: 1px dashed #000; font-size: 11px; }
+        .sign { margin-top: 16px; display: flex; justify-content: space-between; font-size: 11px; }
+      </style></head>
+      <body>
+        <div class="logo-box">
+          <img src="img/logo.png" alt="ترياق">
+          <h2>تِــريَــاق</h2>
+          <p>إشعار دائن — مرتجع مبيعات</p>
+        </div>
+        <p class="info-p">التاريخ: <b>${esc(nowStr)}</b></p>
+        <p class="info-p">فاتورة أصلية: <b>${esc(invNo)}</b></p>
+        <p class="info-p">العميل: ${esc(cust || "عميل نقدي")}</p>
+        <p class="info-p">المستخدم: ${esc(user.full_name || user.username)}</p>
+        <table>
+          <thead><tr>
+            <th style="width:42%; text-align:right">الصنف</th>
+            <th style="width:14%; text-align:center">الكمية</th>
+            <th style="width:20%; text-align:center">السعر</th>
+            <th style="width:24%; text-align:left">الإجمالي</th>
+          </tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+        <div class="totals">
+          <div class="totals-row"><span>إجمالي المبلغ المسترد:</span><span>${money(refundVal)}</span></div>
+        </div>
+        <div class="sign">
+          <div>توقيع العميل: ............</div>
+          <div>توقيع الصيدلي: ............</div>
+        </div>
+        <div class="footer">شكراً لتعاملكم معنا<br>تِــريَــاق v2.0</div>
+      </body></html>`;
+
+    printHtml(html);
+  };
+
+  window.submitBulkReturn = async () => {
+    const sale_id = $("#ret-invoice").dataset.saleId;
+    const items = [];
+    const detailedItems = [];
+    document.querySelectorAll(".ret-qty").forEach(input => {
+      const qty = parseFloat(input.value);
+      if (qty > 0) {
+        items.push({ product_id: parseInt(input.dataset.pid), qty: qty });
+        const tr = input.closest("tr");
+        const name = tr ? tr.querySelector("td:first-child")?.textContent?.trim() : "دواء";
+        const price = parseFloat(input.dataset.price) || 0;
+        detailedItems.push({ name, qty, price });
+      }
+    });
+
+    if (items.length === 0) { toast("يرجى تحديد كميات للإرجاع", "warn"); return; }
+    const expectedRefund = calcRefundPreview();
+    if (!(await showPopupConfirm(`هل أنت متأكد من إتمام المرتجع لعدد (${items.length}) صنف بإجمالي تقريبي ${money(expectedRefund)}؟`, "تأكيد المرتجع"))) return;
+
+    const invNo = $("#ret-invoice").value;
+    const custName = $("#cust-name")?.value;
+
+    try {
+      const res = await api("/api/returns/customer/bulk", {
+        method: "POST",
+        body: JSON.stringify({ sale_id: parseInt(sale_id), items })
+      });
+      toast(`تمت العملية بنجاح! قيمة الاسترداد: ${money(res.refund)}`);
+      printReturnVoucher(invNo, custName, detailedItems, res.refund);
+      $("#invoice-info").style.display = "none";
+      $("#ret-invoice").value = "";
+      loadRecentInvoices();
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  };
+
+  loadRecentInvoices();
+});
+</script>
+</body>
+</html>
+

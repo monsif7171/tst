@@ -1,0 +1,92 @@
+﻿<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="light">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تِــريَــاق — تعديلات المخزون</title>
+<link rel="stylesheet" href="css/app.css?v=2.3">
+  <link rel="stylesheet" href="css/responsive.css">
+  <link rel="stylesheet" href="css/design-system.css">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<link rel="apple-touch-icon" href="img/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ترياق">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#f2572c"></head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="js/app.js?v=2.2"></script>
+<script>
+boot("تعديلات المخزون", async (user, el) => {
+  const isAdmin = user.role === "admin";
+  let branches = [];
+  if (isAdmin) {
+    try { branches = (await api("/api/branches")).branches || []; } catch (e) {}
+  }
+
+  el.innerHTML = `
+    <div class="toolbar">
+      <button class="btn primary" onclick="openAddAdj()">${icon("plus")}<span>تعديل مخزون</span></button>
+    </div>
+    <div class="card" id="adj-table"></div>`;
+
+  async function load() {
+    try {
+      const data = await api("/api/adjustments");
+      const adjs = data.adjustments || [];
+      $("#adj-table").innerHTML = tableHTML([
+        { label: "الدواء", key: "product_name" },
+        { label: "الفرع", render: (r) => `<span class="pill info">${esc(r.branch_name || "-")}</span>` },
+        { label: "الكمية", key: "qty", num: true, render: (r) => `<span class="pill ${r.qty > 0 ? 'ok' : 'danger'}">${fmt(r.qty)}</span>` },
+        { label: "السبب", key: "reason_type", render: (r) => esc({
+          damage: "تالف",
+          expiry: "منتهي الصلاحية",
+          return: "مرتجع",
+          stock_difference: "فرق الجرد"
+        }[r.reason_type] || r.reason_type) },
+        { label: "ملاحظات", key: "reason_note" },
+        { label: "بواسطة", key: "adjusted_by_name" },
+        { label: "التاريخ", key: "adjustment_date", render: (r) => esc((r.adjustment_date || "").slice(0, 16)) },
+      ], adjs, "لا توجد تعديلات");
+    } catch (e) { toast(e.message, "error"); }
+  }
+
+  window.openAddAdj = async () => {
+    const products = (await api("/api/products")).products || [];
+    modal("تعديل مخزون", `
+      ${isAdmin && branches.length > 0 ? `
+        <div class="field"><label>الفرع *</label>
+          <select name="branch_id" required>
+            ${branches.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join("")}
+          </select>
+        </div>
+      ` : ""}
+      <div class="field"><label>الدواء *</label>
+        <select name="product_id" required>
+          <option value="">-- اختر الدواء --</option>
+          ${products.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}
+        </select>
+      </div>
+      <div class="field"><label>الكمية (موجبة للزيادة، سالبة للنقصان) *</label><input type="number" step="0.01" name="qty" required></div>
+      <div class="field"><label>السبب *</label>
+        <select name="reason_type">
+          <option value="damage">تالف</option>
+          <option value="expiry">منتهي الصلاحية</option>
+          <option value="return">مرتجع</option>
+          <option value="stock_difference">فرق الجرد</option>
+        </select>
+      </div>
+      <div class="field"><label>ملاحظات</label><textarea name="reason_note" rows="3" placeholder="اكتب ملاحظاتك هنا..."></textarea></div>
+    `, async (fd) => {
+      await api("/api/adjustments", { method: "POST", body: JSON.stringify(fd) });
+      toast("تم تسجيل التعديل");
+      load();
+    });
+  };
+
+  load();
+});
+</script>
+</body>
+</html>

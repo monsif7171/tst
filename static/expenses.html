@@ -1,0 +1,97 @@
+﻿<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="light">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تِــريَــاق — المصروفات</title>
+<link rel="stylesheet" href="css/app.css?v=2.3">
+  <link rel="stylesheet" href="css/responsive.css">
+  <link rel="stylesheet" href="css/design-system.css">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<link rel="apple-touch-icon" href="img/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ترياق">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#f2572c"></head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="js/app.js?v=2.2"></script>
+<script>
+boot("المصروفات التشغيلية", async (user, el) => {
+  let currentFilter = "all";
+
+  el.innerHTML = `
+  <div class="toolbar">
+    <button class="btn primary" onclick="openAddExp()">${icon("plus")}<span>تسجيل مصروف جديد</span></button>
+  </div>
+  <div class="filter-bar">
+    <button class="filter-btn ${currentFilter==='all'?'active':''}" onclick="setFilter('all')">الكل</button>
+    <button class="filter-btn ${currentFilter==='day'?'active':''}" onclick="setFilter('day')">يومي</button>
+    <button class="filter-btn ${currentFilter==='month'?'active':''}" onclick="setFilter('month')">شهري</button>
+    <button class="filter-btn ${currentFilter==='year'?'active':''}" onclick="setFilter('year')">سنوي</button>
+  </div>
+  <div class="grid-2">
+    <div class="card" id="exp-table"></div>
+    <div class="card"><h2 class="panel-title">${icon("chart")} المصروفات حسب البند</h2><div id="exp-summary"></div></div>
+  </div>`;
+
+  window.setFilter = (f) => {
+    currentFilter = f;
+    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`.filter-btn[onclick="setFilter('${f}')"]`).classList.add('active');
+    load();
+  };
+
+  async function load() {
+    $("#exp-table").innerHTML = tableSkeletonHTML(6, 4);
+    const data = await api("/api/expenses" + (currentFilter !== "all" ? `?payment_type=${currentFilter}` : ""));
+    const exps = data.expenses || [];
+    $("#exp-table").innerHTML = tableHTML([
+      { label: "البند", key: "category" },
+      { label: "المبلغ", key: "amount", num: true, render: (r) => money(r.amount) },
+      { label: "التاريخ", render: (r) => esc((r.expense_date || "").slice(0, 16)) },
+      { label: "الملاحظات", key: "note" },
+    ], exps, "لا توجد مصروفات مسجلة");
+
+    const sumData = await api("/api/expenses/summary");
+    const byCat = sumData.by_category || [];
+    $("#exp-summary").innerHTML = tableHTML([
+      { label: "البند", key: "category" },
+      { label: "الإجمالي", key: "total", num: true, render: (r) => money(r.total) },
+    ], byCat, "لا توجد بيانات");
+  }
+
+  window.openAddExp = () => {
+    modal("تسجيل مصروف جديد", `
+      <div class="form-grid">
+        <div class="field"><label>بند المصروف *</label>
+          <select name="category">
+            <option value="إيجار">إيجار</option>
+            <option value="كهرباء ومياه">كهرباء ومياه</option>
+            <option value="رواتب">رواتب</option>
+            <option value="نقل ومواصلات">نقل ومواصلات</option>
+            <option value="صيانة">صيانة</option>
+            <option value="أخرى">أخرى</option>
+          </select></div>
+        <div class="field"><label>فترة الدفع *</label>
+          <select name="payment_type">
+            <option value="day">يومي</option>
+            <option value="month">شهري</option>
+            <option value="year">سنوي</option>
+          </select></div>
+        <div class="field"><label>المبلغ *</label><input type="number" step="0.01" name="amount" required autofocus></div>
+        <div class="field" style="grid-column:1/-1"><label>ملاحظات</label><input type="text" name="note"></div>
+      </div>
+    `, async (fd) => {
+      await api("/api/expenses", { method: "POST", body: JSON.stringify(fd) });
+      toast("تم تسجيل المصروف بنجاح");
+      load();
+    });
+  };
+
+  load();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,1267 @@
+﻿<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="light">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تِــريَــاق — الإدارة والإعدادات</title>
+<link rel="stylesheet" href="css/app.css?v=2.3">
+  <link rel="stylesheet" href="css/responsive.css">
+  <link rel="stylesheet" href="css/design-system.css">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<link rel="apple-touch-icon" href="img/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ترياق">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#f2572c"></head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="js/app.js?v=2.2"></script>
+<script>
+boot("الإدارة والإعدادات", async (user, el) => {
+  if (user.role !== "admin") { el.innerHTML = '<div class="empty">عذراً، هذه الصفحة للمديرين فقط</div>'; return; }
+
+  el.innerHTML = `
+  <div class="tabs">
+    <button class="active" onclick="switchTab('users', this)">المستخدمين</button>
+    <button onclick="switchTab('branches', this)">الفروع</button>
+    <button onclick="switchTab('categories', this)">تصنيفات الأدوية</button>
+    <button onclick="switchTab('exchange_rate', this)">سعر الصرف (الدولار)</button>
+    <button onclick="switchTab('loyalty', this)">الولاء والمكافآت</button>
+    <button onclick="switchTab('audit', this)">سجل العمليات</button>
+    <button onclick="switchTab('backup', this)">النسخ الاحتياطي</button>
+    <button onclick="switchTab('drug_api', this)">ربط المستودع (API)</button>
+    <button onclick="switchTab('support', this)">دعم التواصل</button>
+  </div>
+  <div id="tab-content"></div>`;
+
+  async function loadUsers() {
+    const [data, lic] = await Promise.all([
+      api("/api/users"),
+      api("/api/license/status").catch(() => null)
+    ]);
+    const us = data.users || [];
+
+    let licBanner = "";
+    if (lic) {
+      const isValid = lic.is_valid;
+      const isLifetime = lic.is_lifetime;
+      const days = typeof lic.days_remaining === "number" ? lic.days_remaining : null;
+      const expDate = lic.expires_at;
+      const client = lic.client_name || "الصيدلية";
+
+      let statusColor = "var(--ok)";
+      let badgeHtml = "";
+      let durationValueHtml = "";
+      let durationSubtext = "";
+
+      if (!isValid) {
+        statusColor = "var(--danger)";
+        badgeHtml = `<span class="pill danger" style="font-size:11.5px; font-weight:700; padding:2px 10px;">منتهي</span>`;
+        durationValueHtml = `<div style="font-size:16px; font-weight:800; color:var(--danger);">منتهي الصلاحية</div>`;
+        durationSubtext = "يرجى التجديد للاستمرار دون توقف";
+      } else if (isLifetime) {
+        statusColor = "var(--ok)";
+        badgeHtml = `<span class="pill ok" style="font-size:11.5px; font-weight:700; padding:2px 10px;">دائم ♾️</span>`;
+        durationValueHtml = `<div style="font-size:16px; font-weight:800; color:var(--ok); display:flex; align-items:center; gap:6px;"><span>مدى الحياة (دائم)</span> <span style="font-size:18px;">♾️</span></div>`;
+        durationSubtext = "ترخيص مفتوح غير مقيد بتاريخ انتهاء";
+      } else if (days !== null && days <= 7) {
+        statusColor = "var(--danger)";
+        badgeHtml = `<span class="pill danger" style="font-size:11.5px; font-weight:700; padding:2px 10px;">ينتهي خلال ${days} أيام</span>`;
+        durationValueHtml = `<div style="font-size:20px; font-weight:800; color:var(--danger);">${days} <span style="font-size:13px; font-weight:600;">أيام فقط</span></div>`;
+        durationSubtext = `ينتهي في ${esc(expDate || "-")} (تجديد عاجل)`;
+      } else if (days !== null && days <= 30) {
+        statusColor = "var(--warn)";
+        badgeHtml = `<span class="pill warn" style="font-size:11.5px; font-weight:700; padding:2px 10px;">ينتهي قريباً</span>`;
+        durationValueHtml = `<div style="font-size:20px; font-weight:800; color:var(--warn);">${days} <span style="font-size:13px; font-weight:600;">يوماً</span></div>`;
+        durationSubtext = `تاريخ الانتهاء: ${esc(expDate || "-")}`;
+      } else {
+        statusColor = "var(--ok)";
+        badgeHtml = `<span class="pill ok" style="font-size:11.5px; font-weight:700; padding:2px 10px;">ساري ونشط</span>`;
+        durationValueHtml = `<div style="font-size:20px; font-weight:800; color:var(--ok);">${days !== null ? days : '-'} <span style="font-size:13px; font-weight:600;">يوماً</span></div>`;
+        durationSubtext = `تاريخ الانتهاء: ${esc(expDate || "-")}`;
+      }
+
+      licBanner = `
+        <div class="card" style="margin-bottom:16px; padding:18px 20px; border-radius:var(--radius-lg); border:1px solid var(--border); box-shadow:var(--shadow);">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; padding-bottom:14px; border-bottom:1px solid var(--border);">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <div style="width:44px; height:44px; border-radius:12px; background:color-mix(in srgb, ${statusColor} 12%, transparent); color:${statusColor}; display:grid; place-items:center; flex-shrink:0;">
+                ${isLifetime ? icon("check") : (days !== null && days <= 30 ? icon("alert") : icon("clock"))}
+              </div>
+              <div>
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                  <h3 style="margin:0; font-size:16px; font-weight:800; color:var(--text);">${esc(client)}</h3>
+                  ${badgeHtml}
+                </div>
+                <div style="font-size:12px; color:var(--muted); margin-top:2px;">
+                  حالة اشتراك وترخيص نظام تِــريَــاق
+                </div>
+              </div>
+            </div>
+            <div>
+              <a href="/activate.html" class="btn primary sm" style="text-decoration:none; display:inline-flex; align-items:center; gap:6px; font-weight:700; padding:8px 16px; border-radius:8px;">
+                ${icon("refresh")} <span>تجديد / تفعيل الترخيص</span>
+              </a>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:12px; margin-top:14px;">
+            <div style="background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:12px 14px; display:flex; flex-direction:column; justify-content:center;">
+              <span style="font-size:11.5px; color:var(--muted); font-weight:600; margin-bottom:4px;">المدة المتبقية على الاشتراك</span>
+              ${durationValueHtml}
+              <span style="font-size:11px; color:var(--muted); margin-top:4px;">${durationSubtext}</span>
+            </div>
+
+            <div style="background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:12px 14px; display:flex; flex-direction:column; justify-content:center;">
+              <span style="font-size:11.5px; color:var(--muted); font-weight:600; margin-bottom:4px;">نطاق التفعيل والفروع</span>
+              <div style="font-size:15px; font-weight:800; color:var(--text);">${lic.max_branches > 1 ? lic.max_branches + ' فروع مصرحة' : 'فرع واحد (نسخة محلية)'}</div>
+              <span style="font-size:11px; color:var(--ok); font-weight:600; margin-top:4px;">✓ متصل ويعمل بصورة طبيعية</span>
+            </div>
+
+            <div style="background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:12px 14px; display:flex; flex-direction:column; justify-content:center;">
+              <span style="font-size:11.5px; color:var(--muted); font-weight:600; margin-bottom:4px;">كود تعريف الجهاز (HWID)</span>
+              <div style="display:flex; align-items:center; gap:6px; margin-top:2px;">
+                <span class="mono" style="font-size:12.5px; font-weight:700; color:var(--primary);">${esc(lic.machine_id || "غير معروف")}</span>
+                <button type="button" class="btn sm ghost" style="padding:2px 8px; font-size:11px; height:auto; line-height:1.6;" onclick="navigator.clipboard.writeText('${esc(lic.machine_id)}'); toast('تم نسخ كود الجهاز بنجاح');" title="نسخ الكود">نسخ</button>
+              </div>
+              <span style="font-size:11px; color:var(--muted); margin-top:4px;">يُطلب عند تجديد الاشتراك أو الترقية</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    $("#tab-content").innerHTML = `
+      ${licBanner}
+      <div class="toolbar" style="margin-bottom:12px"><button type="button" class="btn primary" onclick="openAddUser()">${icon("plus")}<span>إضافة مستخدم</span></button></div>
+      <div class="card">
+        ${tableHTML([
+          { label: "المستخدم", key: "username", render: (r) => {
+              const isMe = r.id === user.id || r.username === user.username;
+              return `<span style="font-weight:600;">${esc(r.username)}</span>` +
+                     (isMe ? ` <span class="pill info sm" style="font-size:11px; margin-right:4px;">حسابك الحالي</span>` : "");
+          }},
+          { label: "الاسم الكامل", key: "full_name" },
+          { label: "الدور", key: "role", render: (r) => esc({ admin: "مدير", pharmacist: "صيدلي", sales: "بائع" }[r.role] || r.role) },
+          { label: "الحالة", render: (r) => `<span class="pill ${r.active ? "ok" : "danger"}">${r.active ? "نشط" : "معطل"}</span>` },
+          { label: "تاريخ الإنشاء", render: (r) => esc((r.created_at || "").slice(0, 10)) },
+          { label: "إجراءات", key: "actions", num: false, render: (r) => {
+              if (user.role !== 'admin') return '';
+              const isMe = r.id === user.id || r.username === user.username;
+              const isSeedAdmin = r.id === 1 || r.username === "admin";
+
+              let actions = `
+                <button type="button" class="btn sm" onclick="editUser(${r.id})" title="تعديل المستخدم" aria-label="تعديل المستخدم">${icon("edit")}</button>
+                <button type="button" class="btn sm" onclick="openUserPassword(${r.id}, '${esc(r.full_name || r.username)}')" title="تغيير كلمة المرور" aria-label="تغيير كلمة المرور">${icon("lock")} كلمة المرور</button>
+              `;
+
+              if (isMe) {
+                actions += `<button type="button" class="btn sm" disabled style="opacity:0.35; cursor:not-allowed;" title="لا يمكنك تعطيل حسابك الإداري الحالي المسجل به" aria-label="لا يمكنك تعطيل حسابك الحالي">${icon("pause")}</button>`;
+              } else if (isSeedAdmin) {
+                actions += `<button type="button" class="btn sm" disabled style="opacity:0.35; cursor:not-allowed;" title="لا يمكن تعطيل المدير الرئيسي للنظام" aria-label="لا يمكن تعطيل المدير الرئيسي">${icon("pause")}</button>`;
+              } else {
+                actions += `<button type="button" class="btn sm" onclick="suspendUser(${r.id})" title="${r.active ? 'تعطيل الحساب' : 'تفعيل الحساب'}" aria-label="${r.active ? 'تعطيل الحساب' : 'تفعيل الحساب'}">${r.active ? icon("pause"): icon("play")}</button>`;
+              }
+
+              if (isMe) {
+                actions += `<button type="button" class="btn sm ghost" disabled style="opacity:0.25; cursor:not-allowed;" title="لا يمكنك حذف حسابك الحالي" aria-label="لا يمكنك حذف حسابك الحالي">${icon("trash")}</button>`;
+              } else if (isSeedAdmin) {
+                actions += `<button type="button" class="btn sm ghost" disabled style="opacity:0.25; cursor:not-allowed;" title="لا يمكن حذف المدير الرئيسي للنظام" aria-label="لا يمكن حذف المدير الرئيسي للنظام">${icon("trash")}</button>`;
+              } else {
+                actions += `<button type="button" class="btn sm ghost danger" onclick="deleteUser(${r.id})" title="حذف المستخدم" aria-label="حذف المستخدم">${icon("trash")}</button>`;
+              }
+
+              if (r.warning_msg) {
+                  actions += `<button type="button" class="btn sm ghost warn" onclick="viewWarning(${r.id})" title="عرض التحذير" aria-label="عرض التحذير">${icon("alert")}</button>`;
+              }
+              return actions;
+          }},
+        ], us, "لا يوجد مستخدمين مسجلين")}
+      </div>
+      <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border); display:flex; justify-content:flex-end">
+        <button type="button" class="btn danger" onclick="openResetSystem()">${icon("alert")}<span>إعادة ضبط النظام</span></button>
+      </div>`;
+  }
+
+  async function loadBranches() {
+    const data = await api("/api/branches");
+    const bs = data.branches || [];
+    const maxBranches = data.max_branches || 1;
+    const isAtLimit = bs.length >= maxBranches;
+
+    $("#tab-content").innerHTML = `
+      <div class="toolbar" style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <button type="button" class="btn primary" onclick="openAddBranch(${bs.length}, ${maxBranches})">${icon("plus")}<span>إضافة فرع</span></button>
+        <span class="pill ${isAtLimit ? 'warn' : 'ok'}" style="font-size:12px; font-weight:700; padding:4px 12px; display:inline-flex; align-items:center; gap:6px;">
+          <span>الفروع المسجلة: <b>${bs.length}</b> من أصل <b>${maxBranches}</b> مصرح بها</span>
+          ${isAtLimit ? '<span style="font-size:11px; opacity:0.85;">(الحد الأقصى للترخيص)</span>' : ''}
+        </span>
+      </div>
+      <div class="card">
+        ${tableHTML([
+          { label: "الفرع", key: "name" },
+          { label: "الهاتف", key: "phone" },
+          { label: "العنوان", key: "address" },
+        ], bs)}
+      </div>`;
+  }
+
+  const AUDIT_ACTIONS = {
+    // Sales & Customers
+    create_sale: { text: "تسجيل فاتورة بيع", type: "ok" },
+    cancel_sale: { text: "إلغاء فاتورة بيع", type: "danger" },
+    return_sale: { text: "مرتجع مبيعات", type: "warn" },
+    customer_return: { text: "مرتجع عميل", type: "warn" },
+    customer_return_bulk: { text: "إرجاع أصناف مبيعات", type: "warn" },
+    create_customer: { text: "تسجيل عميل جديد", type: "ok" },
+    update_customer: { text: "تعديل بيانات عميل", type: "info" },
+    delete_customer: { text: "حذف عميل", type: "danger" },
+
+    // Purchases & Suppliers
+    create_purchase: { text: "تسجيل فاتورة مشتريات", type: "ok" },
+    create_supplier: { text: "إضافة مورد جديد", type: "ok" },
+    update_supplier: { text: "تعديل بيانات مورد", type: "info" },
+    delete_supplier: { text: "حذف مورد", type: "danger" },
+    pay_supplier: { text: "سداد دفعة للمورد", type: "info" },
+
+    // Products & Inventory
+    create_product: { text: "إضافة دواء جديد", type: "ok" },
+    update_product: { text: "تعديل بيانات دواء", type: "info" },
+    delete_product: { text: "حذف دواء", type: "danger" },
+    import_products: { text: "استيراد أدوية من ملف", type: "ok" },
+    import_external_product: { text: "استيراد من مستودع الأدوية", type: "ok" },
+    add_batch: { text: "إضافة دفعة تشغيلة", type: "ok" },
+    adjust_inventory: { text: "تعديل رصيد المخزون", type: "warn" },
+    update_branch_limits: { text: "تحديث حدود المخزون", type: "info" },
+
+    // Categories
+    create_category: { text: "إضافة تصنيف أدوية", type: "ok" },
+    update_category: { text: "تعديل تصنيف أدوية", type: "info" },
+    delete_category: { text: "حذف تصنيف أدوية", type: "danger" },
+
+    // Users & Authentication
+    login: { text: "تسجيل دخول", type: "info" },
+    logout: { text: "تسجيل خروج", type: "info" },
+    create_user: { text: "إنشاء مستخدم جديد", type: "ok" },
+    update_user: { text: "تعديل بيانات مستخدم", type: "info" },
+    delete_user: { text: "حذف مستخدم", type: "danger" },
+    suspend_user: { text: "تعطيل حساب مستخدم", type: "danger" },
+    unsuspend_user: { text: "تفعيل حساب مستخدم", type: "ok" },
+    deactivate_user: { text: "إلغاء تنشيط مستخدم", type: "danger" },
+    warn_user: { text: "إرسال تحذير إداري", type: "warn" },
+    change_password: { text: "تغيير كلمة المرور", type: "info" },
+    change_user_password: { text: "تغيير كلمة مرور مستخدم", type: "info" },
+
+    // Promotions & Loyalty
+    create_promotion: { text: "إنشاء عرض ترويجي", type: "ok" },
+    update_promotion: { text: "تعديل عرض ترويجي", type: "info" },
+    delete_promotion: { text: "حذف عرض ترويجي", type: "danger" },
+    approve_promotion: { text: "اعتماد عرض ترويجي", type: "ok" },
+    reject_promotion: { text: "رفض عرض ترويجي", type: "danger" },
+    update_loyalty_settings: { text: "تحديث إعدادات الولاء", type: "info" },
+    create_reward: { text: "إضافة مكافأة ولاء", type: "ok" },
+    deactivate_reward: { text: "تعطيل مكافأة ولاء", type: "danger" },
+    redeem_product: { text: "استبدال نقاط بمكافأة", type: "ok" },
+
+    // Product Requests
+    create_product_request: { text: "تسجيل طلب منتج", type: "ok" },
+    update_request_status: { text: "تحديث حالة طلب منتج", type: "info" },
+    delete_product_request: { text: "حذف طلب منتج", type: "danger" },
+
+    // Expenses & Shifts
+    create_expense: { text: "تسجيل مصروف", type: "warn" },
+    delete_expense: { text: "حذف مصروف", type: "danger" },
+    open_shift: { text: "فتح وردية جديدة", type: "ok" },
+    close_shift: { text: "تقفيل وإغلاق وردية", type: "info" },
+
+    // Branches & System
+    create_branch: { text: "إنشاء فرع جديد", type: "ok" },
+    update_branch: { text: "تعديل بيانات فرع", type: "info" },
+    backup: { text: "إنشاء نسخة احتياطية", type: "info" },
+    restore: { text: "استعادة نسخة احتياطية", type: "warn" },
+    restore_backup: { text: "استعادة نسخة احتياطية", type: "warn" },
+    sync_pull: { text: "مزامنة سحب بيانات", type: "info" },
+    sync_push: { text: "مزامنة رفع بيانات", type: "info" },
+    reset_system: { text: "إعادة ضبط النظام", type: "danger" },
+    update_settings: { text: "تحديث إعدادات النظام", type: "info" }
+  };
+
+  const AUDIT_TABLES = {
+    users: "المستخدمين",
+    products: "الأدوية والمخزون",
+    suppliers: "الموردين",
+    supplier_payments: "مدفوعات الموردين",
+    purchases: "المشتريات",
+    sales: "المبيعات",
+    sale_items: "بنود الفواتير",
+    promotions: "العروض الترويجية",
+    inventory_adjustments: "تعديلات المخزون",
+    batches: "الدفعات والتشغيلات",
+    expenses: "المصروفات",
+    categories: "تصنيفات الأدوية",
+    returns: "المرتجعات",
+    branches: "الفروع",
+    product_requests: "طلبات المنتجات",
+    settings: "إعدادات النظام",
+    loyalty_rewards: "مكافآت الولاء",
+    loyalty_ledger: "سجل نقاط الولاء",
+    shifts: "الورديات والصندوق"
+  };
+
+  async function loadAudit() {
+    const userData = await api("/api/users");
+    const users = (userData.users || []).filter(u => u.active);
+    const userOptions = `<option value="">كل المستخدمين</option>` +
+      users.map(u => `<option value="${u.id}">${esc(u.full_name || u.username)}</option>`).join("");
+
+    const actionOptions = `<option value="">كل العمليات</option>` +
+      Object.entries(AUDIT_ACTIONS).map(([k, v]) => `<option value="${k}">${esc(v.text)}</option>`).join("");
+
+    $("#tab-content").innerHTML = `
+      <div class="card">
+        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; align-items:flex-end;">
+          <div class="field" style="margin:0; flex:1; min-width:160px">
+            <label>تصفية بالمستخدم</label>
+            <select id="filter-user">${userOptions}</select>
+          </div>
+          <div class="field" style="margin:0; flex:1; min-width:180px">
+            <label>نوع العملية</label>
+            <select id="filter-action">${actionOptions}</select>
+          </div>
+          <div class="field" style="margin:0">
+            <label>من تاريخ</label>
+            <input type="date" id="filter-date-from">
+          </div>
+          <div class="field" style="margin:0">
+            <label>إلى تاريخ</label>
+            <input type="date" id="filter-date-to">
+          </div>
+          <button class="btn primary" id="btn-apply-filter" onclick="applyAuditFilters()">${icon("search")}<span>تطبيق الفلتر</span></button>
+          <button class="btn" onclick="clearAuditFilters()">${icon("refresh")}<span>مسح</span></button>
+        </div>
+        <div id="audit-table"></div>
+      </div>`;
+    // Load all on initial tab open
+    applyAuditFilters();
+  }
+
+  async function applyAuditFilters() {
+    const userId = document.getElementById("filter-user")?.value || "";
+    const action = document.getElementById("filter-action")?.value || "";
+    const dateFrom = document.getElementById("filter-date-from")?.value || "";
+    const dateTo = document.getElementById("filter-date-to")?.value || "";
+
+    const params = new URLSearchParams();
+    if (userId) params.set("user_id", userId);
+    if (action) params.set("action", action);
+    if (dateFrom) params.set("date_from", dateFrom);
+    if (dateTo) params.set("date_to", dateTo);
+
+    const data = await api("/api/audit?" + params.toString());
+    const es = data.entries || [];
+    const total = es.length;
+
+    document.getElementById("audit-table").innerHTML = `
+      <div style="margin-bottom:8px; color:var(--muted); font-size:0.9em;">عرض ${total} عملية مسجلة</div>
+      ${tableHTML([
+        { label: "المستخدم", key: "user_name", render: (r) => `<span style="font-weight:600;">${esc(r.user_name || "النظام")}</span>` },
+        { label: "نوع العملية", render: (r) => {
+            const act = AUDIT_ACTIONS[r.action];
+            if (act) return `<span class="pill ${act.type}">${esc(act.text)}</span>`;
+            return `<span class="pill info">${esc((r.action || "-").replace(/_/g, " "))}</span>`;
+        }},
+        { label: "القسم المتأثر", render: (r) => {
+            const t = AUDIT_TABLES[r.table_name];
+            return t ? `<span style="color:var(--text); font-weight:500;">${esc(t)}</span>` : `<span style="color:var(--muted); font-size:12px;">${esc(r.table_name || "-")}</span>`;
+        }},
+        { label: "تفاصيل العملية", key: "detail", render: (r) => `<span style="font-size:12.5px; color:var(--text);">${esc(r.detail || "-")}</span>` },
+        { label: "التاريخ والوقت", render: (r) => `<span style="font-size:12px; color:var(--muted);" dir="ltr">${esc((r.created_at || "").slice(0, 19))}</span>` },
+      ], es, "لا توجد عمليات مسجلة")}
+    `;
+  }
+  window.applyAuditFilters = applyAuditFilters;
+
+  function clearAuditFilters() {
+    if (document.getElementById("filter-user")) document.getElementById("filter-user").value = "";
+    if (document.getElementById("filter-action")) document.getElementById("filter-action").value = "";
+    if (document.getElementById("filter-date-from")) document.getElementById("filter-date-from").value = "";
+    if (document.getElementById("filter-date-to")) document.getElementById("filter-date-to").value = "";
+    applyAuditFilters();
+  }
+  window.clearAuditFilters = clearAuditFilters;
+
+  async function loadBackup() {
+    const data = await api("/api/backups");
+    const bs = data.backups || [];
+    const ext = ".db,.gz,.prerestore";
+    $("#tab-content").innerHTML = `
+      <div class="toolbar">
+        <button class="btn primary" onclick="takeBackup()">${icon("plus")}<span>إنشاء نسخة احتياطية الآن</span></button>
+        <button class="btn" onclick="$('#backup-upload').click()">${icon("upload")}<span>رفع نسخة من جهازي</span></button>
+        <input type="file" id="backup-upload" accept="${ext}" style="display:none" onchange="uploadBackup(this)">
+      </div>
+      <div class="card">
+        ${tableHTML([
+          { label: "الملف", key: "file" },
+          { label: "الحجم", render: (r) => `${(r.size / 1024 / 1024).toFixed(2)} MB` },
+          { label: "التاريخ", render: (r) => esc(new Date(r.mtime * 1000).toLocaleString("ar-EG")) },
+          { label: "إجراءات", render: (r) => `
+            <a class="btn sm" href="/api/backups/${encodeURIComponent(r.file)}/download">${icon("download")} تنزيل</a>
+            <button class="btn sm" onclick="restoreBackup('${esc(r.file)}')">${icon("upload")} استعادة</button>` },
+        ], bs, "لا توجد نسخ احتياطية بعد")}
+      </div>`;
+  }
+
+  window.switchTab = (tab, btn) => {
+    $$(".tabs button").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    if (tab === "users") loadUsers();
+    else if (tab === "branches") loadBranches();
+    else if (tab === "exchange_rate") loadExchangeRate();
+    else if (tab === "loyalty") loadLoyalty();
+    else if (tab === "audit") loadAudit();
+    else if (tab === "backup") loadBackup();
+    else if (tab === "drug_api") loadDrugApi();
+    else if (tab === "support") loadSupport();
+    else if (tab === "categories") loadCategories();
+};
+
+  async function loadExchangeRate() {
+    $("#tab-content").innerHTML = `<div class="card"><div class="skeleton" style="height:140px"></div></div>`;
+    try {
+      const data = await api("/api/settings/exchange-rate");
+      const currentRate = data.rate || 1.0;
+      const history = data.history || [];
+      const usdCount = data.usd_products || 0;
+      const totalCount = data.total_products || 0;
+      const lastUpdateStr = data.last_updated ? esc(data.last_updated) : "لم يتم التحديث بعد";
+
+      const histRows = history.length ? history.map(h => {
+        const diff = (h.old_rate && h.new_rate) ? (h.new_rate - h.old_rate) : null;
+        const diffBadge = diff === null ? '<span class="sub">-</span>' : (
+          diff > 0 
+            ? `<span class="pill danger" style="font-size:11px;">+${fmt(diff)} (${fmt((diff/h.old_rate)*100)}% ⭡)</span>`
+            : (diff < 0 ? `<span class="pill ok" style="font-size:11px;">${fmt(diff)} (${fmt((diff/h.old_rate)*100)}% ⭣)</span>` : '<span class="pill info" style="font-size:11px;">ثابت</span>')
+        );
+        return `
+          <tr>
+            <td style="padding:10px; border-bottom:1px solid var(--border); font-size:13px;"><span class="mono">${esc(h.created_at || "")}</span></td>
+            <td style="padding:10px; border-bottom:1px solid var(--border); text-align:center;">${h.old_rate ? `${fmt(h.old_rate)} ${CURRENCY}` : '<span class="sub">-</span>'}</td>
+            <td style="padding:10px; border-bottom:1px solid var(--border); text-align:center;"><b style="color:var(--primary); font-size:14px;">${fmt(h.new_rate)} ${CURRENCY}</b></td>
+            <td style="padding:10px; border-bottom:1px solid var(--border); text-align:center;">${diffBadge}</td>
+            <td style="padding:10px; border-bottom:1px solid var(--border); font-size:13px;">${esc(h.user_name || h.username || "المدير")}</td>
+          </tr>
+        `;
+      }).join("") : `<tr><td colspan="5" class="empty" style="padding:20px; text-align:center;">لا توجد تغييرات مسجلة لسعر الصرف بعد</td></tr>`;
+
+      $("#tab-content").innerHTML = `
+        <div style="max-width:900px; margin:0 auto; display:flex; flex-direction:column; gap:16px;">
+          <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+              <div>
+                <h3 style="margin:0 0 6px; font-size:18px; font-weight:700;">💵 إدارة سعر الصرف والتسعير بالدولار</h3>
+                <p class="sub" style="margin:0; font-size:13px; color:var(--muted); line-height:1.6;">
+                  تحديث سعر الصرف يقوم فورياً بإعادة احتساب وتحديث أسعار البيع والشراء لجميع الأدوية المسعرة بالدولار في المخزون ونقطة البيع.
+                </p>
+              </div>
+              <span class="pill primary" dir="rtl" style="font-size:13px; font-weight:700; padding:6px 14px; display:inline-flex; align-items:center; gap:6px;">
+                <span>1 دولار</span>
+                <span>=</span>
+                <span>${fmt(currentRate)} ${CURRENCY}</span>
+              </span>
+            </div>
+
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-bottom:20px;">
+              <div style="background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:14px; display:flex; align-items:center; gap:12px;">
+                <div style="width:42px; height:42px; border-radius:10px; background:color-mix(in srgb, var(--primary) 12%, transparent); color:var(--primary); display:grid; place-items:center; flex-shrink:0;">
+                  ${icon("cash")}
+                </div>
+                <div>
+                  <div style="font-size:11px; color:var(--muted); font-weight:600;">سعر الصرف الحالي</div>
+                  <div style="font-weight:700; font-size:16px; color:var(--text); margin-top:2px;">${fmt(currentRate)} ${CURRENCY}</div>
+                </div>
+              </div>
+
+              <div style="background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:14px; display:flex; align-items:center; gap:12px;">
+                <div style="width:42px; height:42px; border-radius:10px; background:color-mix(in srgb, var(--blue) 12%, transparent); color:var(--blue); display:grid; place-items:center; flex-shrink:0;">
+                  ${icon("pill")}
+                </div>
+                <div>
+                  <div style="font-size:11px; color:var(--muted); font-weight:600;">الأصناف المسعرة بالدولار</div>
+                  <div style="font-weight:700; font-size:15px; color:var(--text); margin-top:2px;">${usdCount} من أصل ${totalCount} دواء</div>
+                </div>
+              </div>
+
+              <div style="background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:14px; display:flex; align-items:center; gap:12px;">
+                <div style="width:42px; height:42px; border-radius:10px; background:color-mix(in srgb, var(--ok) 12%, transparent); color:var(--ok); display:grid; place-items:center; flex-shrink:0;">
+                  ${icon("bell")}
+                </div>
+                <div>
+                  <div style="font-size:11px; color:var(--muted); font-weight:600;">آخر تحديث</div>
+                  <div style="font-weight:600; font-size:13px; color:var(--text); margin-top:2px;">${lastUpdateStr}</div>
+                </div>
+              </div>
+            </div>
+
+            <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:16px;">
+              <h4 style="margin:0 0 10px; font-size:15px; font-weight:700;">تعديل سعر الصرف اليومي</h4>
+              <div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
+                <div class="field" style="margin:0; flex:1; min-width:220px;">
+                  <label style="font-size:13px; font-weight:600;">قيمة الدولار الواحد مقابل العملة المحلية (${CURRENCY}) *</label>
+                  <input type="number" step="0.01" min="0.01" id="rate-input" value="${currentRate}" placeholder="مثال: 650" style="font-size:16px; font-weight:700;">
+                </div>
+                <button type="button" class="btn primary" id="btn-save-rate" onclick="saveExchangeRate()" style="height:42px;">
+                  ${icon("check")} <span>حفظ وتحديث أسعار المخزون</span>
+                </button>
+              </div>
+              <small style="display:block; color:var(--muted); margin-top:8px; font-size:12px;">
+                💡 بمجرد الحفظ، سيتم تحديث أسعار البيع المحلية لجميع الأصناف المسعرة بالدولار (مقربة لأقرب رقم صحيح) وأسعار الشراء مباشرة.
+              </small>
+            </div>
+
+            <div style="background:color-mix(in srgb, var(--blue) 5%, transparent); border:1px dashed var(--blue); border-radius:12px; padding:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+              <div>
+                <b style="font-size:13px; color:var(--text);">التحويل الأولي للمخزون الحالي</b>
+                <p style="margin:2px 0 0; font-size:12px; color:var(--muted);">
+                  إذا كانت لديك أدوية مضافة قديماً بالجنيه فقط وتريد تحويلها لتصبح مسعرة بالدولار بناءً على سعر الصرف الحالي.
+                </p>
+              </div>
+              <button type="button" class="btn sm" onclick="initialSyncExchangeRate()" id="btn-initial-sync">
+                ${icon("refresh")} <span>تحويل الأصناف الحالية للدولار</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h4 style="margin:0 0 12px; font-size:16px; font-weight:700;">سجل تغيرات سعر الصرف السابقة</h4>
+            <div class="table-wrap">
+              <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                <thead>
+                  <tr style="background:var(--bg-secondary);">
+                    <th style="padding:10px; text-align:right; border-bottom:1px solid var(--border);">التاريخ والوقت</th>
+                    <th style="padding:10px; text-align:center; border-bottom:1px solid var(--border);">السعر السابق</th>
+                    <th style="padding:10px; text-align:center; border-bottom:1px solid var(--border);">السعر الجديد</th>
+                    <th style="padding:10px; text-align:center; border-bottom:1px solid var(--border);">الفرق / النسبة</th>
+                    <th style="padding:10px; text-align:right; border-bottom:1px solid var(--border);">بواسطة</th>
+                  </tr>
+                </thead>
+                <tbody>${histRows}</tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      `;
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+
+  window.saveExchangeRate = async () => {
+    const inp = $("#rate-input");
+    if (!inp) return;
+    const rate = parseFloat(inp.value);
+    if (!rate || rate <= 0) {
+      toast("يرجى إدخال سعر صرف صالح أكبر من الصفر", "error");
+      return;
+    }
+    const btn = $("#btn-save-rate");
+    if (btn) btn.disabled = true;
+    try {
+      const res = await api("/api/settings/exchange-rate", {
+        method: "POST",
+        body: JSON.stringify({ rate })
+      });
+      toast(res.message || "تم تحديث سعر الصرف وأسعار المنتجات بنجاح");
+      loadExchangeRate();
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  };
+
+  window.initialSyncExchangeRate = async () => {
+    if (!(await showPopupConfirm("هل أنت متأكد من تحويل الأصناف القديمة غير المسعرة بالدولار إلى الدولار بقسمة أسعارها الحالية على سعر الصرف؟", "تأكيد التحويل الأولي"))) return;
+    const btn = $("#btn-initial-sync");
+    if (btn) btn.disabled = true;
+    try {
+      const res = await api("/api/settings/exchange-rate/initial-sync", { method: "POST" });
+      toast(res.message || "تم التحويل الأولي للأصناف بنجاح");
+      loadExchangeRate();
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  };
+
+async function loadDrugApi() {
+  $("#tab-content").innerHTML = `
+    <div style="max-width:820px; margin:0 auto; display:flex; flex-direction:column; gap:16px;">
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; flex-wrap:wrap; gap:12px;">
+          <div>
+            <h3 style="margin:0 0 6px; font-size:18px; font-weight:700;">ربط مستودع الأدوية الإلكتروني (API)</h3>
+            <p class="sub" style="margin:0; font-size:13px; color:var(--muted); line-height:1.6;">
+              جلب وتعبئة بيانات وتفاصيل الأدوية تلقائياً (الاسم التجاري، العلمي، المادة الفعالة، والباركود) عند إضافة أو استيراد الأصناف.
+            </p>
+          </div>
+          <span class="pill ok" id="drug-api-status-pill" style="display:inline-flex; align-items:center; gap:6px;">
+            ${icon("check")} <span>جاهز ومتصل</span>
+          </span>
+        </div>
+
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:12px; margin-top:8px;">
+          <div style="background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:14px; display:flex; align-items:center; gap:12px;">
+            <div style="width:40px; height:40px; border-radius:10px; background:color-mix(in srgb, var(--ok) 12%, transparent); color:var(--ok); display:grid; place-items:center; flex-shrink:0;">
+              ${icon("cloud")}
+            </div>
+            <div>
+              <div style="font-size:11px; color:var(--muted); font-weight:600;">حالة الخدمة</div>
+              <div style="font-weight:700; font-size:14px; color:var(--text); margin-top:2px;">جاهز للعمل المباشر</div>
+            </div>
+          </div>
+
+          <div style="background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:14px; display:flex; align-items:center; gap:12px;">
+            <div style="width:40px; height:40px; border-radius:10px; background:color-mix(in srgb, var(--blue) 12%, transparent); color:var(--blue); display:grid; place-items:center; flex-shrink:0;">
+              ${icon("refresh")}
+            </div>
+            <div>
+              <div style="font-size:11px; color:var(--muted); font-weight:600;">نوع المزامنة</div>
+              <div style="font-weight:700; font-size:14px; color:var(--text); margin-top:2px;">تعبئة تلقائية فورية</div>
+            </div>
+          </div>
+
+          <div style="background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:14px; display:flex; align-items:center; gap:12px;">
+            <div style="width:40px; height:40px; border-radius:10px; background:color-mix(in srgb, var(--primary) 12%, transparent); color:var(--primary); display:grid; place-items:center; flex-shrink:0;">
+              ${icon("pill")}
+            </div>
+            <div>
+              <div style="font-size:11px; color:var(--muted); font-weight:600;">نطاق التغطية</div>
+              <div style="font-weight:700; font-size:14px; color:var(--text); margin-top:2px;">قاعدة بيانات الأدوية المعتمدة</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:14px; padding-bottom:10px; border-bottom:1px solid var(--border);">
+          <span style="color:var(--primary); display:flex;">${icon("lock")}</span>
+          <h4 style="margin:0; font-size:15px; font-weight:700;">إعدادات مفتاح الاتصال بالمستودع</h4>
+        </div>
+
+        <div class="field" style="margin-bottom:14px;">
+          <label for="setting-openfda-key" style="font-weight:600; font-size:13px; margin-bottom:6px; display:block;">
+            مفتاح الوصول الخاص بالخدمة <span style="font-weight:normal; color:var(--muted); font-size:12px;">(اختياري)</span>
+          </label>
+          <div style="position:relative; display:flex; align-items:center;">
+            <input type="password" id="setting-openfda-key" placeholder="أدخل مفتاح الخدمة إن توفر أو اتركه فارغاً..." autocomplete="new-password" style="padding-inline-end:42px;">
+            <button type="button" onclick="toggleDrugApiKeyVisibility()" id="btn-toggle-key-vis" title="إظهار أو إخفاء المفتاح" aria-label="إظهار أو إخفاء المفتاح" style="position:absolute; inset-inline-end:8px; background:transparent; border:none; color:var(--muted); cursor:pointer; padding:6px; display:grid; place-items:center; border-radius:6px;">
+              ${icon("eye")}
+            </button>
+          </div>
+          <small style="color:var(--muted); font-size:12px; line-height:1.6; margin-top:6px; display:block;">
+            الربط يعمل افتراضياً بشكل مباشر ومجاني. إذا كان لديك مفتاح مخصص يمكنك إضافته هنا لزيادة سرعة استرجاع البيانات.
+          </small>
+        </div>
+
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:16px;">
+          <button type="button" class="btn primary" id="btn-save-drug-api" onclick="saveDrugApiSettings()">
+            ${icon("check")} <span>حفظ الإعدادات</span>
+          </button>
+          <button type="button" class="btn" id="btn-test-drug-api" onclick="testDrugApiConnection()">
+            ${icon("globe")} <span>فحص الاتصال بالمستودع</span>
+          </button>
+        </div>
+
+        <div id="test-drug-api-result" style="margin-top:14px;"></div>
+      </div>
+    </div>
+  `;
+
+  try {
+    const sData = await api("/api/settings");
+    const settings = sData.settings || {};
+    if (settings.openfda_api_key) {
+      const inp = $("#setting-openfda-key");
+      if (inp) inp.value = settings.openfda_api_key;
+    }
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+window.toggleDrugApiKeyVisibility = () => {
+  const inp = $("#setting-openfda-key");
+  if (!inp) return;
+  inp.type = inp.type === "password" ? "text" : "password";
+};
+
+window.saveDrugApiSettings = async () => {
+  const keyVal = ($("#setting-openfda-key")?.value || "").trim();
+  const btn = $("#btn-save-drug-api");
+  if (btn) btn.disabled = true;
+  try {
+    await api("/api/settings", {
+      method: "PUT",
+      body: JSON.stringify({ openfda_api_key: keyVal })
+    });
+    toast("تم حفظ إعدادات ربط المستودع بنجاح");
+  } catch (e) {
+    toast(`فشل الحفظ: ${e.message}`, "error");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+};
+
+window.testDrugApiConnection = async () => {
+  const keyVal = ($("#setting-openfda-key")?.value || "").trim();
+  const resEl = $("#test-drug-api-result");
+  const btn = $("#btn-test-drug-api");
+  if (btn) btn.disabled = true;
+  if (resEl) {
+    resEl.innerHTML = `
+      <div style="display:flex; align-items:center; gap:8px; padding:10px 14px; border-radius:10px; background:var(--bg-secondary); border:1px solid var(--border); font-size:13px; color:var(--text);">
+        <span class="sync-btn spinning" style="background:transparent; color:var(--primary); padding:0; width:16px; height:16px; display:inline-grid; place-items:center;">${icon("refresh")}</span>
+        <span>جاري فحص الاتصال بمستودع الأدوية...</span>
+      </div>
+    `;
+  }
+  try {
+    const res = await api("/api/settings/test-drug-api", {
+      method: "POST",
+      body: JSON.stringify({ api_key: keyVal })
+    });
+    if (res.ok) {
+      if (resEl) {
+        resEl.innerHTML = `
+          <div style="display:flex; align-items:center; gap:10px; padding:12px 14px; border-radius:10px; background:color-mix(in srgb, var(--ok) 12%, var(--card)); border:1px solid var(--ok); color:var(--ok); font-size:13px; font-weight:600;">
+            <span style="display:flex; flex-shrink:0;">${icon("check")}</span>
+            <span>${esc(res.message || "تم الاتصال بنجاح بمستودع الأدوية — الخدمة جاهزة للعمل.")}</span>
+          </div>
+        `;
+      }
+      toast(res.message || "تم الاتصال بنجاح بمستودع الأدوية");
+    } else {
+      if (resEl) {
+        resEl.innerHTML = `
+          <div style="display:flex; align-items:center; gap:10px; padding:12px 14px; border-radius:10px; background:var(--danger-bg); border:1px solid var(--danger); color:var(--danger); font-size:13px; font-weight:600;">
+            <span style="display:flex; flex-shrink:0;">${icon("alert")}</span>
+            <span>${esc(res.message || "تعذر الاتصال بالمستودع")}</span>
+          </div>
+        `;
+      }
+      toast(res.message || "تعذر الاتصال بالمستودع", "error");
+    }
+  } catch (e) {
+    if (resEl) {
+      resEl.innerHTML = `
+        <div style="display:flex; align-items:center; gap:10px; padding:12px 14px; border-radius:10px; background:var(--danger-bg); border:1px solid var(--danger); color:var(--danger); font-size:13px; font-weight:600;">
+          <span style="display:flex; flex-shrink:0;">${icon("alert")}</span>
+          <span>فشل الفحص: ${esc(e.message)}</span>
+        </div>
+      `;
+    }
+    toast(e.message, "error");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+};
+
+async function loadCategories() {
+  const data = await api("/api/categories");
+  const cats = data.categories || [];
+  $("#tab-content").innerHTML = `
+    <div class="toolbar"><button class="btn primary" onclick="openAddCategory()">${icon("plus")}<span>إضافة تصنيف</span></button></div>
+    <div class="card">
+      ${tableHTML([
+        { label: "التصنيف", key: "name" },
+        { label: "إجراءات", render: (r) => `
+            <button type="button" class="btn sm" onclick="editCategory(${r.id})" title="تعديل التصنيف" aria-label="تعديل التصنيف">${icon("edit")}</button>
+            <button type="button" class="btn sm ghost danger" onclick="deleteCategory(${r.id})" title="حذف التصنيف" aria-label="حذف التصنيف">${icon("trash")}</button>
+          `},
+      ], cats, "لا توجد تصنيفات مسجلة")}
+    </div>`;
+}
+
+async function openAddCategory() {
+  modal("إضافة تصنيف جديد", `
+    <div class="form-grid">
+      <div class="field"><label>اسم التصنيف *</label><input type="text" name="name" required></div>
+    </div>
+  `, async (fd) => {
+    await api("/api/categories", { method: "POST", body: JSON.stringify(fd) });
+    toast("تمت إضافة التصنيف بنجاح");
+    loadCategories();
+  });
+}
+window.openAddCategory = openAddCategory;
+
+async function editCategory(id) {
+  const cat = await api(`/api/categories/${id}`);
+  modal("تعديل التصنيف", `
+    <div class="form-grid">
+      <div class="field"><label>اسم التصنيف *</label><input type="text" name="name" value="${esc(cat.name)}" required></div>
+    </div>
+  `, async (fd) => {
+    await api(`/api/categories/${id}`, { method: "PUT", body: JSON.stringify(fd) });
+    toast("تم تعديل التصنيف بنجاح");
+    loadCategories();
+  });
+}
+window.editCategory = editCategory;
+
+async function deleteCategory(id) {
+  if (!(await showPopupConfirm("هل أنت متأكد من حذف هذا التصنيف؟", "حذف التصنيف"))) return;
+  await api(`/api/categories/${id}`, { method: "DELETE" });
+  toast("تم حذف التصنيف بنجاح");
+  loadCategories();
+}
+window.deleteCategory = deleteCategory;
+
+async function loadSupport() {
+  $("#tab-content").innerHTML = `
+    <div class="card">
+      <h3 style="margin-bottom:16px">دعم التواصل</h3>
+      <div class="support-grid" style="max-width:440px; margin:0 auto 24px;">
+        <div class="support-card" style="text-align:center;">
+          <div class="support-phone" dir="ltr" style="font-size:16px; font-weight:600; color:var(--text); margin-bottom:16px;">+249904096062</div>
+          <div class="support-actions">
+            <a href="tel:+249904096062" class="support-btn primary">
+              ${icon("phone")} اتصل
+            </a>
+            <a href="https://wa.me/249904096062" class="support-btn whatsapp" target="_blank" rel="noopener">
+              ${icon("whatsapp")} واتساب
+            </a>
+          </div>
+        </div>
+      </div>
+      <div style="text-align:center;margin-top:24px;padding-top:16px;border-top:1px solid var(--border);color:var(--muted);font-size:12px">
+        جميع الحقوق محفوظة © 2026 تِــريَــاق
+      </div>
+    </div>`;
+}
+
+function callPhone(phone) {
+  window.location.href = 'tel:' + phone.replace(/[^0-9+]/g, '');
+}
+
+function openWhatsApp(phone) {
+  const cleanPhone = phone.replace(/[^0-9]/g, '');
+  window.open('https://wa.me/' + cleanPhone, '_blank');
+}
+
+  async function loadLoyalty() {
+    const [settingsData, rewardsData, productsData] = await Promise.all([
+      api("/api/loyalty/settings"),
+      api("/api/loyalty/rewards"),
+      api("/api/products?limit=500")
+    ]);
+    const s = settingsData.settings || {};
+    const rewards = rewardsData.rewards || [];
+    const products = (productsData.products || []).filter(p => p.active !== 0);
+
+    $("#tab-content").innerHTML = `
+    <div style="display:grid;gap:20px">
+      <div class="card">
+        <h3 style="margin-bottom:16px">⚙️ إعدادات قواعد النقاط</h3>
+        <div class="form-grid">
+          <div class="field">
+            <label>وحدات العملة لكل نقطة (معدل الكسب)</label>
+            <input type="number" id="ls-earn-rate" value="${s.loyalty_earn_rate || 10}" min="1" step="0.5">
+            <small>مثال: 10 = كل 10 ج.س = 1 نقطة</small>
+          </div>
+          <div class="field">
+            <label>قيمة النقطة الواحدة (عند الاستبدال كخصم)</label>
+            <input type="number" id="ls-point-value" value="${s.loyalty_point_value || 0.5}" min="0.01" step="0.01">
+            <small>مثال: 0.5 = كل نقطة تساوي 0.5 ج.س خصم</small>
+          </div>
+          <div class="field">
+            <label>الحد الأدنى للاستبدال (نقاط)</label>
+            <input type="number" id="ls-min-redeem" value="${s.loyalty_min_redeem || 50}" min="0">
+          </div>
+          <div class="field">
+            <label>أقصى نسبة خصم من الفاتورة (%)</label>
+            <input type="number" id="ls-max-pct" value="${s.loyalty_max_discount_pct || 30}" min="1" max="100">
+          </div>
+          <div class="field">
+            <label>استثناء الأدوية الوصفية من الكسب</label>
+            <select id="ls-exclude-rx">
+              <option value="1" ${s.loyalty_exclude_prescription !== "0" ? "selected" : ""}>نعم - لا تُكسب نقاط</option>
+              <option value="0" ${s.loyalty_exclude_prescription === "0" ? "selected" : ""}>لا - تُكسب نقاط</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn primary" style="margin-top:12px" onclick="saveLoyaltySettings()">حفظ الإعدادات</button>
+        <div style="margin-top:16px;padding:12px;background:var(--warning-bg);border-radius:8px;border:1px solid var(--warning)">
+          <p style="margin:0;font-size:13px"><b>ملاحظة تنظيمية:</b> وفقاً لضوابط بيع الأدوية، يُنصح باستثناء الأدوية الوصفية من برنامج الولاء وعدم الترويج لها عبر المكافآت. تأكد من أن المكافآت لا تشمل أدوية تتطلب وصفة طبية.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-bottom:16px">🎁 قائمة مكافآت المنتجات</h3>
+        <div class="toolbar" style="margin-bottom:12px">
+          <select id="reward-product" style="flex:1">
+            <option value="">-- اختر منتج --</option>
+            ${products.map(p => `<option value="${p.id}" ${p.is_prescription ? 'disabled' : ''}>${esc(p.name)}${p.is_prescription ? ' (وصفي - محظور)' : ''} - سعر: ${fmt(p.sale_price)}</option>`).join("")}
+          </select>
+          <div class="field" style="margin:0;width:120px"><input type="number" id="reward-cost" placeholder="النقاط" min="1"></div>
+          <div class="field" style="margin:0;width:100px"><input type="number" id="reward-max" placeholder="أقصى/شهر" min="1" value="1"></div>
+          <button class="btn primary" onclick="addReward()">إضافة</button>
+        </div>
+        <div id="rewards-table">
+          ${rewards.length === 0 ? '<div class="empty">لا توجد مكافآت محددة</div>' : tableHTML([
+            { label: "المنتج", key: "product_name" },
+            { label: "تكلفة النقاط", num: true, render: (r) => `<span class="pill">${fmt(r.points_cost)} نقطة</span>` },
+            { label: "أقصى شهرياً", key: "max_per_month", num: true },
+            { label: "إجراءات", render: (r) => `<button class="btn sm ghost danger" onclick="removeReward(${r.id})">حذف</button>` },
+          ], rewards)}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  window.saveLoyaltySettings = async () => {
+    await api("/api/loyalty/settings", { method: "PUT", body: JSON.stringify({
+      loyalty_earn_rate: document.getElementById("ls-earn-rate").value,
+      loyalty_point_value: document.getElementById("ls-point-value").value,
+      loyalty_min_redeem: document.getElementById("ls-min-redeem").value,
+      loyalty_max_discount_pct: document.getElementById("ls-max-pct").value,
+      loyalty_exclude_prescription: document.getElementById("ls-exclude-rx").value,
+    })});
+    toast("تم حفظ إعدادات الولاء بنجاح");
+  };
+
+  window.addReward = async () => {
+    const product_id = document.getElementById("reward-product").value;
+    const points_cost = document.getElementById("reward-cost").value;
+    const max_per_month = document.getElementById("reward-max").value || 1;
+    if (!product_id || !points_cost) { toast("اختر منتج وحدد تكلفة النقاط", "error"); return; }
+    await api("/api/loyalty/rewards", { method: "POST", body: JSON.stringify({
+      product_id: parseInt(product_id), points_cost: parseFloat(points_cost), max_per_month: parseInt(max_per_month)
+    })});
+    toast("تمت إضافة المكافأة");
+    loadLoyalty();
+  };
+
+  window.removeReward = async (id) => {
+    if (!(await showPopupConfirm("هل تريد حذف هذه المكافأة؟", "حذف مكافأة"))) return;
+    await api(`/api/loyalty/rewards/${id}`, { method: "DELETE" });
+    toast("تم حذف المكافأة");
+    loadLoyalty();
+  };
+
+  window.takeBackup = async () => {
+    try {
+      await runWithDeterminateRing({
+        title: "نسخ احتياطي لقاعدة البيانات",
+        subtitle: "إنشاء نقطة استعادة آمنة للنظام",
+        iconType: "backup",
+        stages: [
+          { pct: 15, label: "فحص وتأمين جداول النظام" },
+          { pct: 45, label: "تصدير سجل المعاملات وبيانات الأدوية" },
+          { pct: 75, label: "ضغط البيانات وإنشاء ملف النسخة" },
+          { pct: 90, label: "التحقق من سلامة النسخة والترخيص" },
+          { pct: 100, label: "اكتمل النسخ الاحتياطي وحفظ الملف بنجاح" }
+        ],
+        successMessage: "تم إنشاء النسخة الاحتياطية بنجاح!",
+        action: async () => {
+          return await api("/api/backup", { method: "POST" });
+        }
+      });
+      toast("تم إنشاء النسخة الاحتياطية بنجاح");
+      loadBackup();
+    } catch (e) {
+      console.error("Backup failed:", e);
+    }
+  };
+
+  window.uploadBackup = async (input) => {
+    const file = input.files[0];
+    input.value = "";
+    if (!file) return;
+
+    const ring = showProgressRing({
+      title: "رفع نسخة احتياطية من جهازك",
+      subtitle: `${file.name} (${(file.size / 1024).toFixed(1)} KB)`,
+      iconType: "upload",
+      stages: [
+        { pct: 20, label: "إرسال حزمة الملف إلى السيرفر" },
+        { pct: 80, label: "فحص بنية وصيغة النسخة الاحتياطية" },
+        { pct: 100, label: "اكتمال الرفع وحفظ النسخة في النظام" }
+      ],
+      initialPercent: 5
+    });
+
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/backups/upload");
+        const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content");
+        if (csrf) xhr.setRequestHeader("X-CSRF-Token", csrf);
+
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const uploadPct = Math.round((e.loaded / e.total) * 75);
+            const loadedKB = (e.loaded / 1024).toFixed(0);
+            const totalKB = (e.total / 1024).toFixed(0);
+            ring.setProgress(uploadPct, `جاري رفع الملف (${loadedKB} / ${totalKB} KB)...`, 0);
+          }
+        };
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            ring.setProgress(90, "التحقق من صحة ملف النسخة وتشفيره...", 1);
+            setTimeout(() => {
+              ring.setSuccess("تم رفع النسخة الاحتياطية وحفظها بنجاح!");
+              setTimeout(async () => {
+                await ring.close();
+                resolve();
+              }, 1200);
+            }, 300);
+          } else {
+            try {
+              const errData = JSON.parse(xhr.responseText);
+              reject(new Error(errData.error || "فشل رفع الملف"));
+            } catch (e) {
+              reject(new Error(`خطأ في الرفع: ${xhr.statusText || xhr.status}`));
+            }
+          }
+        };
+
+        xhr.onerror = () => reject(new Error("انقطع الاتصال أثناء رفع الملف"));
+        xhr.send(fd);
+      });
+
+      toast("تم رفع النسخة. اضغط «استعادة» بجانبها لاسترجاع بياناتها.");
+      loadBackup();
+    } catch (e) {
+      ring.setError(e.message);
+    }
+  };
+
+  window.restoreBackup = async (file) => {
+    if (!(await showPopupConfirm("تحذير: سيتم استبدال البيانات الحالية بالكامل بالنسخة المختارة. هل أنت متأكد من رغبتك في الاستعادة؟", "تأكيد استعادة النسخة"))) return;
+    try {
+      await runWithDeterminateRing({
+        title: "استعادة نسخة احتياطية للنظام",
+        subtitle: `الملف: ${file}`,
+        iconType: "restore",
+        stages: [
+          { pct: 15, label: "فحص حزمة النسخة الاحتياطية المختارة" },
+          { pct: 35, label: "إنشاء لقطة أمان وقائية (Prerestore) تلقائية" },
+          { pct: 65, label: "استرجاع الجداول وتحديث السجلات في قاعدة البيانات" },
+          { pct: 88, label: "إعادة بناء الفهارس والتحقق من المطابقة" },
+          { pct: 100, label: "تمت استعادة بيانات النظام بالكامل بنجاح" }
+        ],
+        successMessage: "تمت استعادة البيانات بنجاح! جاري تحديث الصفحة...",
+        holdSuccessMs: 1600,
+        action: async () => {
+          return await api("/api/restore", { method: "POST", body: JSON.stringify({ file }) });
+        }
+      });
+      location.reload();
+    } catch (e) {
+      console.error("Restore failed:", e);
+    }
+  };
+
+  window.openAddUser = async () => {
+    const bs = (await api("/api/branches")).branches || [];
+    modal("إضافة مستخدم جديد", `
+      <div class="form-grid">
+        <div class="field"><label>اسم المستخدم *</label><input type="text" name="username" required></div>
+        <div class="field"><label>كلمة المرور *</label><input type="password" name="password" minlength="6" required></div>
+        <div class="field"><label>الاسم الكامل</label><input type="text" name="full_name"></div>
+        <div class="field"><label>الدور</label>
+          <select name="role"><option value="sales">بائع</option><option value="pharmacist">صيدلي</option><option value="admin">مدير</option></select></div>
+        <div class="field"><label>الفرع</label>
+          <select name="branch_id">${bs.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join("")}</select></div>
+      </div>
+    `, async (fd) => {
+      await api("/api/users", { method: "POST", body: JSON.stringify(fd) });
+      toast("تمت إضافة المستخدم بنجاح");
+      loadUsers();
+    });
+  };
+
+  window.editUser = async (id) => {
+    const u = await api(`/api/users/${id}`);
+    const bs = (await api("/api/branches")).branches || [];
+    const isMe = u.id === user.id || u.username === user.username;
+    const isSeedAdmin = u.id === 1 || u.username === "admin";
+    const canChangeRole = !isMe && !isSeedAdmin;
+
+    modal("تعديل بيانات المستخدم", `
+      <div class="form-grid">
+        <div class="field"><label>اسم المستخدم</label><input type="text" value="${esc(u.username)}" disabled></div>
+        <div class="field"><label>الاسم الكامل</label><input type="text" name="full_name" value="${esc(u.full_name || "")}"></div>
+        <div class="field"><label>الدور</label>
+          <select name="role" ${!canChangeRole ? 'disabled' : ''}>
+            <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>مدير</option>
+            <option value="pharmacist" ${u.role === 'pharmacist' ? 'selected' : ''}>صيدلي</option>
+            <option value="sales" ${u.role === 'sales' ? 'selected' : ''}>بائع</option>
+          </select>
+          ${isMe ? '<small style="color:var(--muted); font-size:11px; margin-top:4px; display:block;">🔒 لا يمكنك تعديل دور حسابك الإداري الحالي</small>' : (isSeedAdmin ? '<small style="color:var(--muted); font-size:11px; margin-top:4px; display:block;">🔒 لا يمكن تغيير دور المدير العام للنظام</small>' : '')}
+        </div>
+        <div class="field"><label>الفرع</label>
+          <select name="branch_id">
+            <option value="">-- بدون فرع --</option>
+            ${bs.map((b) => `<option value="${b.id}" ${u.branch_id === b.id ? 'selected' : ''}>${esc(b.name)}</option>`).join("")}
+          </select>
+        </div>
+        <div class="field"><label>رسالة تحذيرية</label><input type="text" name="warning_msg" value="${esc(u.warning_msg || "")}" placeholder="تظهر للمستخدم عند تسجيل الدخول"></div>
+      </div>
+    `, async (fd) => {
+      const payload = { ...fd };
+      if (!canChangeRole) delete payload.role;
+      await api(`/api/users/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+      if (fd.warning_msg !== (u.warning_msg || "")) {
+        await api(`/api/users/${id}/warning`, { method: "POST", body: JSON.stringify({ warning_msg: fd.warning_msg }) });
+      }
+      toast("تم تعديل المستخدم بنجاح");
+      loadUsers();
+    });
+  };
+
+  window.suspendUser = async (id) => {
+    if (id === user.id) {
+      toast("لا يمكنك تعطيل حسابك الحالي المسجل به", "error");
+      return;
+    }
+    const u = await api(`/api/users/${id}`);
+    if (u.id === 1 || u.username === "admin") {
+      toast("لا يمكن تعطيل المدير الرئيسي للنظام", "error");
+      return;
+    }
+    const action = u.active ? "تعطيل" : "تفعيل";
+    if (!(await showPopupConfirm(`هل أنت متأكد من ${action} هذا المستخدم؟`, `${action} مستخدم`))) return;
+    await api(`/api/users/${id}/suspend`, { method: "POST", body: JSON.stringify({}) });
+    toast(`تم ${action} المستخدم بنجاح`);
+    loadUsers();
+  };
+
+  window.deleteUser = async (id) => {
+    if (id === user.id) {
+      toast("لا يمكنك حذف حسابك الحالي المسجل به", "error");
+      return;
+    }
+    if (id === 1) {
+      toast("لا يمكن حذف المدير العام", "error");
+      return;
+    }
+    if (!(await showPopupConfirm("تحذير: سيتم حذف هذا المستخدم نهائياً. هل أنت متأكد؟", "حذف مستخدم"))) return;
+    const result = await api(`/api/users/${id}`, { method: "DELETE" });
+    toast(result.message || "تم حذف المستخدم بنجاح");
+    loadUsers();
+  };
+
+  window.viewWarning = async (id) => {
+    const u = await api(`/api/users/${id}`);
+    modal("الرسالة التحذيرية", `
+      <div style="background:var(--danger-bg); padding:16px; border-radius:8px; border:1px solid var(--danger)">
+        <p style="font-weight:bold; margin-bottom:8px">⚠️ تنبيه إداري للمستخدم: ${esc(u.full_name || u.username)}</p>
+        <p>${esc(u.warning_msg || "لا يوجد تحذير")}</p>
+      </div>
+    `, null, "إغلاق");
+  };
+
+  window.openUserPassword = (uid, uname) => {
+    modal(`تغيير كلمة المرور — ${uname}`, `
+      <div class="form-grid">
+        <div class="field"><label>كلمة المرور الجديدة *</label><input type="password" name="new_password" minlength="6" placeholder="6 أحرف على الأقل" required autofocus></div>
+        <div class="field"><label>تأكيد كلمة المرور الجديدة *</label><input type="password" name="confirm_password" minlength="6" required></div>
+      </div>
+    `, async (fd) => {
+      if (fd.new_password !== fd.confirm_password) {
+        throw new Error("كلمات المرور غير متطابقة");
+      }
+      await api(`/api/users/${uid}/password`, {
+        method: "POST",
+        body: JSON.stringify({ new_password: fd.new_password })
+      });
+      toast(`تم تغيير كلمة المرور للمستخدم (${uname}) بنجاح`);
+    }, "حفظ كلمة المرور");
+  };
+
+  window.openAddBranch = (currentCount = 0, maxAllowed = 1) => {
+    if (currentCount >= maxAllowed) {
+      modal("تنبيه: الحد الأقصى للفروع", `
+        <div style="padding:14px; text-align:center;">
+          <div style="width:48px; height:48px; border-radius:50%; background:var(--warning-bg); color:var(--warn); display:grid; place-items:center; margin:0 auto 12px;">
+            ${icon("alert")}
+          </div>
+          <h4 style="margin:0 0 8px; font-size:16px;">تم بلوغ الحد الأقصى للفروع</h4>
+          <p style="font-size:13px; color:var(--muted); line-height:1.6; margin:0 0 16px;">
+            باقة ترخيصك الحالية تدعم <b>${maxAllowed} فرع</b> فقط، وتم استنفاد هذا العدد.<br>
+            لإضافة فروع إضافية، يرجى ترقية باقة الترخيص أو التواصل مع الدعم الفني.
+          </p>
+          <div style="display:flex; justify-content:center; gap:8px;">
+            <a href="/activate.html" class="btn primary sm" style="text-decoration:none; padding:8px 16px; border-radius:8px; display:inline-flex; align-items:center; gap:6px;">
+              ${icon("refresh")} <span>ترقية / تفعيل الترخيص</span>
+            </a>
+          </div>
+        </div>
+      `, null, "إغلاق");
+      return;
+    }
+
+    modal("إضافة فرع جديد", `
+      <div class="form-grid">
+        <div class="field"><label>اسم الفرع *</label><input type="text" name="name" required></div>
+        <div class="field"><label>الهاتف</label><input type="text" name="phone"></div>
+        <div class="field"><label>العنوان</label><input type="text" name="address"></div>
+      </div>
+    `, async (fd) => {
+      await api("/api/branches", { method: "POST", body: JSON.stringify(fd) });
+      toast("تمت إضافة الفرع بنجاح");
+      loadBranches();
+    });
+  };
+
+  window.openResetSystem = () => {
+    modal("⚠️ إعادة ضبط النظام بالكامل", `
+      <div style="padding:12px;background:var(--danger-bg);border-radius:10px;margin-bottom:12px">
+        <p style="margin:0;font-weight:bold">تحذير: سيتم حذف جميع بيانات النظام باستثناء</p>
+        <ul style="margin:8px 0 0; padding-right:20px;font-size:13px">
+          <li>بيانات المستخدمين (admins, pharmacists)</li>
+          <li>بيانات الفروع</li>
+          <li>البيانات الحكومية والالتزامات</li>
+        </ul>
+      </div>
+      <div style="display:flex;gap:12px;flex-direction:column">
+        <div class="field"><label>كلمة المرور الحالية</label><input type="password" id="reset-pwd1" required></div>
+        <div class="field"><label>تأكيد كلمة المرور</label><input type="password" id="reset-pwd2" required></div>
+      </div>
+      <div id="reset-error" style="color:var(--danger);font-size:12px;margin:8px 0 0"></div>
+    `, async () => {
+      const pwd1 = document.getElementById("reset-pwd1").value;
+      const pwd2 = document.getElementById("reset-pwd2").value;
+      const errorEl = document.getElementById("reset-error");
+
+      if (!pwd1) { errorEl.textContent = "أدخل كلمة المرور"; throw new Error("أدخل كلمة المرور"); }
+      if (pwd1 !== pwd2) { errorEl.textContent = "كلمات المرور غير متطابقة"; throw new Error("كلمات المرور غير متطابقة"); }
+
+      if (!(await showPopupConfirm("⚠️ هل أنت متأكد تماماً؟ هذا الإجراء لا يمكن التراجع عنه!", "تأكيد إعادة ضبط النظام"))) {
+        throw new Error("تم إلغاء العملية");
+      }
+
+      await api("/api/system/reset", {
+        method: "POST",
+        body: JSON.stringify({ password: pwd1 })
+      });
+      toast("تمت إعادة ضبط النظام بنجاح");
+      setTimeout(() => location.reload(), 1500);
+    }, "إعادة الضبط");
+    $("#modal-ok")?.classList.add("danger");
+  };
+
+  loadUsers();
+});
+</script>
+</body>
+</html>

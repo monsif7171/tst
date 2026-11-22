@@ -1,0 +1,633 @@
+﻿<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="light">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تِــريَــاق — التقارير</title>
+<link rel="stylesheet" href="css/app.css?v=2.3">
+  <link rel="stylesheet" href="css/responsive.css">
+  <link rel="stylesheet" href="css/design-system.css">
+<style>
+  #print-report-header { display: none; }
+  @media print {
+    #print-report-header { display: block !important; margin-bottom: 16px; }
+    .card { border: 1px solid #ddd !important; }
+  }
+</style>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<link rel="apple-touch-icon" href="img/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ترياق">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#f2572c"></head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="js/app.js?v=2.2"></script>
+<script>
+boot("التقارير", async (user, el) => {
+  if (user.role !== "admin" && user.role !== "pharmacist") {
+    el.innerHTML = '<div class="empty">عذراً، هذه الصفحة للمديرين والصيدلة فقط</div>';
+    return;
+  }
+
+  // Requirement 8: Filter reports based on role
+  const allReports = [
+    { value: "sales", label: "تقرير المبيعات", icon: "cart", roles: ["admin", "pharmacist"] },
+    { value: "profit", label: "تقرير الأرباح", icon: "wallet", roles: ["admin", "pharmacist"] },
+    { value: "product_detail", label: "تقرير دواء معين", icon: "box", roles: ["admin", "pharmacist"] },
+    { value: "stock", label: "تقرير المخزون", icon: "box", roles: ["admin", "pharmacist"] },
+    { value: "expiry", label: "تقرير الصلاحية", icon: "bell", roles: ["admin", "pharmacist"] },
+    { value: "top", label: "تقرير الأكثر مبيعاً", icon: "chart", roles: ["admin", "pharmacist"] },
+    { value: "supplier", label: "تقرير الموردين", icon: "users", roles: ["admin", "pharmacist"] },
+    { value: "expenses", label: "تقرير المصروفات", icon: "wallet", roles: ["admin", "pharmacist"] },
+    { value: "staff_performance", label: "تقرير أداء الموظفين", icon: "users", roles: ["admin"] },
+    { value: "promotions", label: "تقرير أداء العروض", icon: "tag", roles: ["admin"] },
+    { value: "loyalty", label: "تقرير الولاء والمكافآت", icon: "gift", roles: ["admin"] },
+  ];
+
+  const allowedReports = allReports.filter(r => r.roles.includes(user.role));
+
+  let selectedReportType = allowedReports[0]?.value || "sales";
+
+  window.selectReport = (type) => {
+    selectedReportType = type;
+    document.querySelectorAll('.tabs button').forEach(btn => {
+      btn.classList.remove('active');
+    });
+    const clickedBtn = document.querySelector(`.tabs button[onclick="selectReport('${type}')"]`);
+    if (clickedBtn) {
+      clickedBtn.classList.add('active');
+    }
+    loadReport();
+  };
+
+  el.innerHTML = `
+    <div class="toolbar" style="display:flex; gap:10px; flex-wrap:wrap">
+      <input type="date" id="rep-start" class="field" style="width:160px">
+      <input type="date" id="rep-end" class="field" style="width:160px">
+      <button class="btn primary" onclick="loadReport()">${icon("chart")} عرض التقرير</button>
+      <button class="btn" onclick="exportReport('csv')">${icon("download")}<span>تصدير Excel/CSV</span></button>
+      <button class="btn" onclick="resetDateFilters()">${icon("refresh")} إعادة تعيين التاريخ</button>
+      <button class="btn" onclick="printCurrentReport()">${icon("print")} طباعة</button>
+    </div>
+
+    <div class="tabs" style="flex-wrap: wrap; margin-bottom: 16px;">
+      ${allowedReports.map(r => `
+        <button class="${r.value === selectedReportType ? 'active' : ''}" onclick="selectReport('${r.value}')" style="display: inline-flex; align-items: center; gap: 6px;">
+          ${icon(r.icon)}
+          <span>${r.label}</span>
+        </button>
+      `).join('')}
+    </div>
+
+    <div class="card" id="report-container">
+      <div class="empty">اختر نوع التقرير من التبويبات أعلاه</div>
+    </div>`;
+
+  // Set default date range (last 7 days)
+  const today = new Date();
+  const lastWeek = new Date(today - 7 * 24 * 60 * 60 * 1000);
+  $("#rep-end").value = today.toISOString().slice(0, 10);
+  $("#rep-start").value = lastWeek.toISOString().slice(0, 10);
+
+  window.resetDateFilters = () => {
+    const today = new Date();
+    const lastWeek = new Date(today - 7 * 24 * 60 * 60 * 1000);
+    $("#rep-end").value = today.toISOString().slice(0, 10);
+    $("#rep-start").value = lastWeek.toISOString().slice(0, 10);
+    loadReport();
+  };
+
+  window.printCurrentReport = () => {
+    const reportCard = $("#report-container");
+    if (!reportCard || reportCard.querySelector(".empty")) {
+      toast("الرجاء عرض التقرير أولاً قبل الطباعة", "warn");
+      return;
+    }
+    const reportLabel = allReports.find(r => r.value === selectedReportType)?.label || "تقرير";
+    const start = $("#rep-start")?.value || "";
+    const end = $("#rep-end")?.value || "";
+    const dateStr = new Date().toLocaleString("ar-EG", { dateStyle: 'short', timeStyle: 'short' });
+
+    let printHeader = $("#print-report-header");
+    if (!printHeader) {
+      printHeader = document.createElement("div");
+      printHeader.id = "print-report-header";
+      reportCard.parentNode.insertBefore(printHeader, reportCard);
+    }
+    printHeader.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:12px">
+        <div style="display:flex; align-items:center; gap:8px">
+          <img src="img/logo.png" alt="ترياق" style="width:36px; height:36px; object-fit:contain">
+          <div>
+            <h2 style="margin:0; font-size:18px">تِــريَــاق — نظام إدارة الصيدليات</h2>
+            <p style="margin:2px 0; font-size:11px; color:#555">تقرير رسمي صادر من النظام</p>
+          </div>
+        </div>
+        <div style="text-align:left; font-size:11px; color:#333">
+          <div><b>التاريخ:</b> ${esc(dateStr)}</div>
+          <div><b>المستخدم:</b> ${esc(user.full_name || user.username)}</div>
+        </div>
+      </div>
+      <div style="background:#f4f5f7; border:1px solid #ccc; padding:8px 12px; border-radius:6px; margin-bottom:14px; font-size:12px; display:flex; justify-content:space-between">
+        <span><b>نوع التقرير:</b> ${esc(reportLabel)}</span>
+        <span><b>الفترة:</b> من ${esc(start)} إلى ${esc(end)}</span>
+      </div>
+    `;
+    window.print();
+  };
+
+  window.exportReport = async (format) => {
+    const type = selectedReportType;
+    const start = $("#rep-start").value;
+    const end = $("#rep-end").value;
+    const reportLabel = allReports.find(r => r.value === selectedReportType)?.label || "التقرير";
+
+    try {
+      await runWithDeterminateRing({
+        title: `توليد وتصدير ${reportLabel}`,
+        subtitle: (start && end) ? `الفترة: من ${start} إلى ${end}` : "تجميع السجلات والبيانات المحاسبية",
+        iconType: "database",
+        stages: [
+          { pct: 25, label: "استعلام وتجميع القيود المحاسبية والمعاملات" },
+          { pct: 55, label: "حساب الإجماليات والضرائب وفوارق الخصم" },
+          { pct: 85, label: "بناء ملف الجداول وتنسيق الأعمدة" },
+          { pct: 100, label: "اكتمل توليد التقرير وبدء التحميل" }
+        ],
+        successMessage: "تم تجهيز وتنزيل التقرير بنجاح!",
+        holdSuccessMs: 1200,
+        action: async () => {
+          const params = new URLSearchParams();
+          if (start) params.append("start", start);
+          if (end) params.append("end", end);
+
+          let endpointType = type === "product_detail" ? "product" : type;
+          if (type === "product_detail") {
+            const prodId = $("#rep-product-id")?.value;
+            if (prodId) params.append("product_id", prodId);
+          }
+          const response = await api(`/api/reports/${endpointType}?${params}`);
+          let data = response.data || response.staff || response.sales || response.promotions || response.top_customers || [];
+
+          if (!data.length && response.product) {
+            data = [Object.assign({}, response.product, response.summary || {})];
+          }
+
+          if (!data.length) {
+            throw new Error("لا توجد بيانات متاحة للتصدير في هذه الفترة");
+          }
+
+          const worksheet = generateExcelWorksheet(type, data, start, end);
+          const blob = new Blob([worksheet], { type: 'text/csv;charset=utf-8;' });
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `report_${type}_${new Date().toISOString().split('T')[0]}.csv`;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+          return response;
+        }
+      });
+    } catch (error) {
+      console.error("Export error:", error);
+      toast(error.message, "error");
+    }
+  };
+
+  function generateExcelWorksheet(type, data, start, end) {
+    let csvContent = "﻿"; // BOM for UTF-8 in Excel
+    csvContent += "التقرير: " + type + "\n";
+    csvContent += "من: " + start + " | إلى: " + end + "\n\n";
+
+    let headers = [];
+    let mapping = [];
+
+    switch(type) {
+      case "sales":
+        headers = ["رقم الفاتورة", "التاريخ", "العميل", "الموظف", "الإجمالي", "طريقة الدفع"];
+        mapping = ["invoice_no", "sale_date", "customer_name", "staff_name", "total", "payment_method"];
+        break;
+      case "profit":
+        headers = ["التاريخ", "المبيعات", "التكلفة", "الربح"];
+        mapping = ["date", "total_sales", "total_cost", "profit"];
+        break;
+      case "stock":
+        headers = ["الدواء", "الباركود", "المتوفر", "الحد الأدنى", "الوحدة"];
+        mapping = ["name", "barcode", "stock", "min_qty", "unit"];
+        break;
+      case "expiry":
+        headers = ["الدواء", "الفرع", "الدفعة", "تاريخ الانتهاء", "الكمية"];
+        mapping = ["product_name", "branch_name", "batch_no", "expiry_date", "qty"];
+        break;
+      case "top":
+        headers = ["الدواء", "الكمية المباعة", "الإجمالي"];
+        mapping = ["name", "qty_sold", "total_revenue"];
+        break;
+      case "supplier":
+        headers = ["المورد", "الهاتف", "المستحقات", "عدد المشتريات"];
+        mapping = ["name", "phone", "due", "purchase_count"];
+        break;
+      case "expenses":
+        headers = ["التاريخ", "الفئة", "المبلغ", "ملاحظات", "بواسطة"];
+        mapping = ["expense_date", "category", "amount", "note", "user_name"];
+        break;
+      case "staff_performance":
+        headers = ["الموظف", "الدور", "الفرع", "عدد الفواتير", "إجمالي المبيعات", "الخصومات", "المرتجعات", "صافي المبيعات"];
+        mapping = ["full_name", "role", "branch_name", "total_invoices", "total_sales", "total_discounts", "returns_amount", "net_sales"];
+        break;
+      case "product_detail":
+        headers = ["الدواء", "الباركود", "المصنع", "الشكل", "التركيز", "سعر الشراء", "سعر البيع", "المخزون", "المبيعات", "الإيراد"];
+        mapping = ["name", "barcode", "manufacturer", "form", "strength", "purchase_price", "sale_price", "total_stock", "total_qty_sold", "total_sales_revenue"];
+        break;
+      case "promotions":
+        headers = ["العرض", "الشروط", "من", "إلى", "المبيعات أثناء العرض", "المبيعات قبل العرض", "أنشأه", "أقرّه"];
+        mapping = ["name", "conditions", "start_date", "end_date", "during_total", "baseline_total", "created_by_name", "approved_by_name"];
+        break;
+      case "loyalty":
+        headers = ["العميل", "الهاتف", "النقاط المكتسبة", "النقاط المستخدمة", "الرصيد الحالي"];
+        mapping = ["name", "phone", "points_earned", "points_redeemed", "current_balance"];
+        break;
+    }
+
+    const escapeCSV = (val) => {
+        val = String(val === null || val === undefined ? "" : val);
+        if (val.includes(",") || val.includes('"') || val.includes("\n")) {
+            return `"${val.replace(/"/g, '""')}"`;
+        }
+        return val;
+    };
+
+    csvContent += headers.map(escapeCSV).join(",") + "\n";
+
+    data.forEach(row => {
+      const rowValues = mapping.map(key => escapeCSV(row[key] || ""));
+      csvContent += rowValues.join(",") + "\n";
+    });
+
+    return csvContent;
+  }
+
+  window.loadReport = async () => {
+    const type = selectedReportType;
+    const start = $("#rep-start").value;
+    const end = $("#rep-end").value;
+    const params = new URLSearchParams();
+    if (start) params.append("start", start);
+    if (end) params.append("end", end);
+
+    const reportCard = $("#report-container");
+    if (reportCard && type !== "product_detail") {
+      reportCard.innerHTML = tableSkeletonHTML(5, 6);
+    }
+
+    let columns = [];
+    let data = [];
+
+    try {
+      switch(type) {
+        case "sales":
+          columns = [
+            { label: "رقم الفاتورة", key: "invoice_no" },
+            { label: "التاريخ", render: (r) => esc((r.sale_date || "").slice(0, 16)) },
+            { label: "العميل", key: "customer_name" },
+            { label: "الإجمالي", key: "total", num: true, render: (r) => money(r.total) },
+            { label: "طريقة الدفع", key: "payment_method" },
+          ];
+          data = (await api(`/api/reports/sales?${params}`)).data || [];
+          break;
+        case "profit":
+          columns = [
+            { label: "التاريخ", render: (r) => esc(r.date || "") },
+            { label: "المبيعات", key: "total_sales", num: true, render: (r) => money(r.total_sales) },
+            { label: "التكلفة", key: "total_cost", num: true, render: (r) => money(r.total_cost) },
+            { label: "الربح", key: "profit", num: true, render: (r) => money(r.profit) },
+          ];
+          data = (await api(`/api/reports/profit?${params}`)).data || [];
+          break;
+        case "stock":
+          columns = [
+            { label: "الدواء", key: "name" },
+            { label: "المتوفر", key: "stock", num: true },
+            { label: "الحد الأدنى", key: "min_qty", num: true },
+            { label: "الحالة", render: (r) => `<span class="pill ${r.stock <= r.min_qty ? 'danger' : 'ok'}">${r.stock <= r.min_qty ? 'منخفض' : 'جيد'}</span>`},
+          ];
+          data = (await api(`/api/reports/stock?${params}`)).data || [];
+          break;
+        case "expiry":
+          columns = [
+            { label: "الدواء", key: "product_name" },
+            { label: "الدفعة", key: "batch_no" },
+            { label: "تاريخ الانتهاء", render: (r) => `<span class="pill ${new Date(r.expiry_date) < new Date() ? 'danger' : 'warn'}">${esc(r.expiry_date || "")}</span>` },
+            { label: "الكمية", key: "qty", num: true },
+          ];
+          data = (await api(`/api/reports/expiry?${params}`)).data || [];
+          break;
+        case "top":
+          columns = [
+            { label: "الدواء", key: "name" },
+            { label: "الكمية المباعة", key: "qty_sold", num: true },
+            { label: "الإجمالي", key: "total_revenue", num: true, render: (r) => money(r.total_revenue) },
+          ];
+          data = (await api(`/api/reports/top?${params}`)).data || [];
+          break;
+        case "supplier":
+          columns = [
+            { label: "المورد", key: "name" },
+            { label: "الهاتف", key: "phone" },
+            { label: "المستحقات", key: "due", num: true, render: (r) => money(r.due) },
+            { label: "عدد المشتريات", key: "purchase_count", num: true },
+          ];
+          data = (await api(`/api/reports/supplier?${params}`)).data || [];
+          break;
+        case "expenses":
+          columns = [
+            { label: "التاريخ", render: (r) => esc((r.expense_date || "").slice(0, 16)) },
+            { label: "الفئة", key: "category" },
+            { label: "المبلغ", key: "amount", num: true, render: (r) => money(r.amount) },
+            { label: "ملاحظات", key: "note" },
+            { label: "بواسطة", key: "user_name" },
+          ];
+          data = (await api(`/api/reports/expenses?${params}`)).data || [];
+          break;
+        case "promotions":
+          columns = [
+            { label: "العرض", key: "name" },
+            { label: "الشروط", key: "conditions" },
+            { label: "من", render: (r) => esc((r.start_date || "").slice(0, 10)) },
+            { label: "إلى", render: (r) => esc((r.end_date || "").slice(0, 10)) },
+            { label: "الحالة", render: (r) => `<span class="pill ${r.active ? 'ok' : 'danger'}">${r.active ? 'نشط' : 'معطّل'}</span>` },
+            { label: "المبيعات أثناء العرض", key: "during_total", num: true, render: (r) => money(r.during_total) },
+            { label: "المبيعات قبل العرض", key: "baseline_total", num: true, render: (r) => money(r.baseline_total) },
+            { label: "الفرق", render: (r) => {
+              const delta = r.during_total - r.baseline_total;
+              return `<span class="${delta > 0 ? 'ok' : delta < 0 ? 'danger' : ''}">${money(delta)}</span>`;
+            }},
+            { label: "أنشأه", key: "created_by_name" },
+            { label: "أقرّه", key: "approved_by_name" },
+          ];
+          data = (await api(`/api/reports/promotions?${params}`)).promotions || [];
+          break;
+        case "loyalty":
+          const container = $("#report-container");
+          const report = await api(`/api/reports/loyalty?${params}`);
+          const s = report.summary || {};
+          container.innerHTML = `
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-bottom:20px">
+              <div class="card" style="padding:16px; text-align:center">
+                <div style="color:var(--muted); font-size:12px">عدد المشتركين</div>
+                <div style="font-size:24px; font-weight:bold; color:var(--primary)">${s.total_members || 0}</div>
+                <div style="font-size:11px; color:var(--muted)">نشط: ${s.active_members || 0}</div>
+              </div>
+              <div class="card" style="padding:16px; text-align:center">
+                <div style="color:var(--muted); font-size:12px">النقاط المكتسبة</div>
+                <div style="font-size:24px; font-weight:bold; color:var(--success)">${fmt(s.total_points_earned || 0)}</div>
+              </div>
+              <div class="card" style="padding:16px; text-align:center">
+                <div style="color:var(--muted); font-size:12px">النقاط المستخدمة</div>
+                <div style="font-size:24px; font-weight:bold; color:var(--warning)">${fmt(s.total_points_redeemed || 0)}</div>
+              </div>
+              <div class="card" style="padding:16px; text-align:center">
+                <div style="color:var(--muted); font-size:12px">تكلفة الخصومات</div>
+                <div style="font-size:24px; font-weight:bold; color:var(--danger)">${money(s.total_discount_cost || 0)}</div>
+                <div style="font-size:11px; color:var(--muted)">قيمة النقطة: ${s.point_value || 0} ج.س</div>
+              </div>
+            </div>
+            <h3 style="margin:16px 0 8px">🏆 أعلى العملاء استخداماً للنقاط</h3>
+            ${tableHTML([
+              { label: "العميل", key: "name" },
+              { label: "الهاتف", key: "phone" },
+              { label: "النقاط المكتسبة", num: true, render: (r) => fmt(r.points_earned || 0) },
+              { label: "النقاط المستخدمة", num: true, render: (r) => fmt(r.points_redeemed || 0) },
+              { label: "الرصيد الحالي", num: true, render: (r) => `<span class="pill ok">${fmt(r.current_balance || 0)}</span>` },
+            ], report.top_customers || [], "لا توجد بيانات")}
+            <h3 style="margin:16px 0 8px">📊 المكافآت الأكثر استبدالاً</h3>
+            ${tableHTML([
+              { label: "المنتج", key: "product_name" },
+              { label: "تكلفة النقاط", num: true, render: (r) => fmt(r.points_cost || 0) },
+              { label: "عدد المرات", num: true, render: (r) => fmt(r.times_redeemed || 0) },
+              { label: "إجمالي النقاط", num: true, render: (r) => fmt(r.total_points_spent || 0) },
+            ], report.reward_stats || [], "لا توجد مكافآت")}
+            <h3 style="margin:16px 0 8px">📈 ملخص شهري</h3>
+            ${tableHTML([
+              { label: "الشهر", key: "month" },
+              { label: "النقاط المكتسبة", num: true, render: (r) => fmt(r.earned || 0) },
+              { label: "النقاط المستخدمة", num: true, render: (r) => fmt(r.redeemed || 0) },
+            ], report.monthly || [], "لا توجد بيانات")}
+          `;
+          return;
+        case "staff_performance":
+          const staffReport = await api(`/api/reports/staff_performance?${params}`);
+          const staffSummary = staffReport.summary || {};
+          $("#report-container").innerHTML = `
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:20px">
+              <div class="card" style="padding:16px; text-align:center">
+                <div style="color:var(--muted); font-size:12px">إجمالي المبيعات</div>
+                <div style="font-size:24px; font-weight:bold; color:var(--primary)">${money(staffSummary.overall_sales || 0)}</div>
+              </div>
+              <div class="card" style="padding:16px; text-align:center">
+                <div style="color:var(--muted); font-size:12px">عدد الفواتير</div>
+                <div style="font-size:24px; font-weight:bold; color:var(--success)">${staffSummary.overall_invoices || 0}</div>
+              </div>
+              <div class="card" style="padding:16px; text-align:center">
+                <div style="color:var(--muted); font-size:12px">صافي المبيعات</div>
+                <div style="font-size:24px; font-weight:bold; color:var(--warning)">${money(staffSummary.overall_net || 0)}</div>
+              </div>
+              <div class="card" style="padding:16px; text-align:center">
+                <div style="color:var(--muted); font-size:12px">المرتجعات</div>
+                <div style="font-size:24px; font-weight:bold; color:var(--danger)">${money(staffSummary.overall_returns || 0)}</div>
+              </div>
+            </div>
+            ${tableHTML([
+              { label: "الموظف", key: "full_name" },
+              { label: "الدور", key: "role" },
+              { label: "الفرع", key: "branch_name" },
+              { label: "الفواتير", key: "total_invoices", num: true },
+              { label: "المبيعات", key: "total_sales", num: true, render: (r) => money(r.total_sales) },
+              { label: "الخصومات", key: "total_discounts", num: true, render: (r) => money(r.total_discounts) },
+              { label: "المرتجعات", key: "returns_amount", num: true, render: (r) => money(r.returns_amount) },
+              { label: "صافي المبيعات", key: "net_sales", num: true, render: (r) => money(r.net_sales) },
+              { label: "الورديات", key: "total_shifts", num: true },
+              { label: "فروقات", key: "total_variance", num: true, render: (r) => money(r.total_variance) },
+            ], staffReport.staff || [], "لا توجد بيانات موظفين")}
+          `;
+          return;
+        case "product_detail":
+          $("#report-container").innerHTML = `
+            <div class="no-print" style="margin-bottom:16px; display:flex; gap:10px; align-items:center; flex-wrap:wrap">
+              <label for="rep-product-id" style="font-size:14px; font-weight:600">اختر الدواء:</label>
+              <select id="rep-product-id" class="field" style="min-width:250px; flex:1"></select>
+              <button type="button" class="btn primary" onclick="loadProductReport()">${icon("search")} عرض التقرير</button>
+            </div>
+            <div id="product-report-body"><div class="empty">اختر الدواء لعرض تقريره التفصيلي</div></div>
+          `;
+          const productOptions = await api("/api/reports/product");
+          const select = $("#rep-product-id");
+          select.innerHTML = '<option value="">-- اختر دواء --</option>' +
+            (productOptions.products || []).map(p =>
+              `<option value="${p.id}">${esc(p.name)} - ${esc(p.barcode || "بدون باركود")}</option>`
+            ).join("");
+          select.onchange = () => { if (select.value) loadProductReport(); };
+          const urlParams = new URLSearchParams(window.location.search);
+          const savedProductId = urlParams.get("product_id");
+          if (savedProductId) {
+            select.value = savedProductId;
+            loadProductReport();
+          }
+          return;
+      }
+
+      const container = $("#report-container");
+      const reportLabel = allReports.find(r => r.value === type)?.label || "تقرير";
+      container.innerHTML = `
+        <div style="margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid var(--border)">
+          <b>التقرير:</b> ${esc(reportLabel)} |
+          <b>من:</b> ${esc(start)} | <b>إلى:</b> ${esc(end)}
+        </div>
+        ${tableHTML(columns, data, "لا توجد بيانات")}
+      `;
+    } catch (e) {
+      toast(e.message, "error");
+      $("#report-container").innerHTML = `<div class="empty">خطأ: ${esc(e.message)}</div>`;
+    }
+  };
+
+  window.loadProductReport = async () => {
+    const productId = $("#rep-product-id")?.value;
+    if (!productId) {
+      toast("الرجاء اختيار دواء", "error");
+      return;
+    }
+    const start = $("#rep-start").value;
+    const end = $("#rep-end").value;
+    const params = new URLSearchParams();
+    params.append("product_id", productId);
+    if (start) params.append("start", start);
+    if (end) params.append("end", end);
+
+    try {
+      const report = await api(`/api/reports/product?${params}`);
+      if (report.error) {
+        $("#report-container").innerHTML = `<div class="empty">${esc(report.error)}</div>`;
+        return;
+      }
+
+      const p = report.product || {};
+      const s = report.summary || {};
+      const targetEl = $("#product-report-body") || $("#report-container");
+
+      targetEl.innerHTML = `
+        <div style="margin-bottom:16px; padding:16px; background:color-mix(in srgb, var(--primary) 8%, var(--card)); border-radius:12px">
+          <h2 style="margin:0 0 8px; font-size:18px">${esc(p.name || "")}</h2>
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:12px; font-size:13px">
+            <div><b>الباركود:</b> ${esc(p.barcode || "-")}</div>
+            <div><b>الاسم العلمي:</b> ${esc(p.generic_name || "-")}</div>
+            <div><b>التركيز:</b> ${esc(p.strength || "-")}</div>
+            <div><b>الشكل:</b> ${esc(p.form || "-")}</div>
+            <div><b>الشركة المصنعة:</b> ${esc(p.manufacturer || "-")}</div>
+            <div><b>الفئة:</b> ${esc(p.category_name || p.category || "-")}</div>
+            <div><b>المورد:</b> ${esc(p.supplier_name || "-")}</div>
+            <div><b>سعر الشراء:</b> ${money(p.purchase_price || 0)}</div>
+            <div><b>سعر البيع:</b> ${money(p.sale_price || 0)}</div>
+            <div><b>الحد الأدنى:</b> ${p.min_qty || 0} ${esc(p.unit || "")}</div>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:20px">
+          <div class="card" style="padding:16px; text-align:center">
+            <div style="color:var(--muted); font-size:12px">المخزون الحالي</div>
+            <div style="font-size:24px; font-weight:bold; color:var(--primary)">${s.total_stock || 0}</div>
+          </div>
+          <div class="card" style="padding:16px; text-align:center">
+            <div style="color:var(--muted); font-size:12px">الكمية المباعة</div>
+            <div style="font-size:24px; font-weight:bold; color:var(--success)">${s.total_qty_sold || 0}</div>
+          </div>
+          <div class="card" style="padding:16px; text-align:center">
+            <div style="color:var(--muted); font-size:12px">إيراد المبيعات</div>
+            <div style="font-size:24px; font-weight:bold; color:var(--warning)">${money(s.total_sales_revenue || 0)}</div>
+          </div>
+          <div class="card" style="padding:16px; text-align:center">
+            <div style="color:var(--muted); font-size:12px">المشتريات</div>
+            <div style="font-size:24px; font-weight:bold; color:var(--info, #667eea)">${s.total_qty_purchased || 0}</div>
+          </div>
+          <div class="card" style="padding:16px; text-align:center">
+            <div style="color:var(--muted); font-size:12px">تكلفة المشتريات</div>
+            <div style="font-size:24px; font-weight:bold; color:var(--muted)">${money(s.total_purchases_cost || 0)}</div>
+          </div>
+          <div class="card" style="padding:16px; text-align:center">
+            <div style="color:var(--muted); font-size:12px">الربح المقدر</div>
+            <div style="font-size:24px; font-weight:bold; color:var(--success)">${money(s.estimated_profit || 0)}</div>
+          </div>
+        </div>
+
+        ${report.batches?.length ? `<h3 style="margin:16px 0 8px">📦 الدفعات والمخزون</h3>
+        ${tableHTML([
+          { label: "الفرع", key: "branch_name" },
+          { label: "رقم الدفعة", key: "batch_no" },
+          { label: "تاريخ الانتهاء", render: (r) => `<span class="pill ${new Date(r.expiry_date) < new Date() ? 'danger' : 'ok'}">${esc(r.expiry_date || "")}</span>` },
+          { label: "الكمية", key: "qty", num: true },
+          { label: "التكلفة", key: "cost", num: true, render: (r) => money(r.cost) },
+        ], report.batches, "لا توجد دفعات")}` : ""}
+
+        ${report.sales?.length ? `<h3 style="margin:16px 0 8px">💰 سجل المبيعات</h3>
+        ${tableHTML([
+          { label: "رقم الفاتورة", key: "invoice_no" },
+          { label: "التاريخ", render: (r) => esc((r.sale_date || "").slice(0, 16)) },
+          { label: "الفرع", key: "branch_name" },
+          { label: "العميل", key: "customer_name" },
+          { label: "البائع", key: "staff_name" },
+          { label: "الكمية", key: "qty", num: true },
+          { label: "السعر", key: "price", num: true, render: (r) => money(r.price) },
+          { label: "الإجمالي", key: "line_total", num: true, render: (r) => money(r.line_total) },
+        ], report.sales, "لا توجد مبيعات")}` : ""}
+
+        ${report.purchases?.length ? `<h3 style="margin:16px 0 8px">📦 سجل المشتريات</h3>
+        ${tableHTML([
+          { label: "رقم الفاتورة", key: "invoice_no" },
+          { label: "التاريخ", render: (r) => esc((r.purchase_date || "").slice(0, 16)) },
+          { label: "الفرع", key: "branch_name" },
+          { label: "المورد", key: "supplier_name" },
+          { label: "الدفعة", key: "batch_no" },
+          { label: "الكمية", key: "qty", num: true },
+          { label: "التكلفة", key: "cost", num: true, render: (r) => money(r.cost) },
+          { label: "الإجمالي", key: "total", num: true, render: (r) => money(r.total) },
+        ], report.purchases, "لا توجد مشتريات")}` : ""}
+
+        ${report.adjustments?.length ? `<h3 style="margin:16px 0 8px">⚠️ التسويات والتعديلات</h3>
+        ${tableHTML([
+          { label: "التاريخ", render: (r) => esc((r.adjustment_date || "").slice(0, 16)) },
+          { label: "الفرع", key: "branch_name" },
+          { label: "النوع", key: "reason_type" },
+          { label: "الكمية", key: "qty", num: true },
+          { label: "المسؤول", key: "user_name" },
+          { label: "ملاحظات", key: "reason_note" },
+        ], report.adjustments, "لا توجد تعديلات")}` : ""}
+
+        ${report.returns?.length ? `<h3 style="margin:16px 0 8px">🔄 المرتجعات</h3>
+        ${tableHTML([
+          { label: "التاريخ", render: (r) => esc((r.return_date || "").slice(0, 16)) },
+          { label: "الفرع", key: "branch_name" },
+          { label: "النوع", key: "type" },
+          { label: "الكمية", key: "qty", num: true },
+          { label: "المبلغ", key: "amount", num: true, render: (r) => money(r.amount) },
+          { label: "السبب", key: "reason" },
+        ], report.returns, "لا توجد مرتجعات")}` : ""}
+      `;
+    } catch (e) {
+      toast(e.message, "error");
+      $("#report-container").innerHTML = `<div class="empty">خطأ: ${esc(e.message)}</div>`;
+    }
+  };
+
+  // Load initial report
+  loadReport();
+});
+</script>
+<style>
+  .report-card:hover { border-color: var(--primary) !important; box-shadow: var(--shadow); }
+  .report-card svg { width: 24px; height: 24px; }
+</style>
+</body>
+</html>

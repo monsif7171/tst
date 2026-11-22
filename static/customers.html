@@ -1,0 +1,191 @@
+﻿<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="light">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تِــريَــاق — العملاء وولاء الزبائن</title>
+<link rel="stylesheet" href="css/app.css?v=2.3">
+  <link rel="stylesheet" href="css/responsive.css">
+  <link rel="stylesheet" href="css/design-system.css">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<link rel="apple-touch-icon" href="img/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ترياق">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#f2572c"></head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="js/app.js?v=2.2"></script>
+<script>
+boot("العملاء وولاء الزبائن", async (user, el) => {
+  el.innerHTML = `
+  <div class="toolbar">
+    <div class="search">${icon("search")}<input type="text" id="c-search" placeholder="ابحث برقم الهاتف أو الاسم..."></div>
+    <button class="btn primary" onclick="openAddCust()">${icon("plus")}<span>تسجيل عميل جديد</span></button>
+    <button class="btn" onclick="exportCustomers()">${icon("download")}<span>تصدير العملاء (CSV)</span></button>
+  </div>
+  <div class="card" id="c-table"></div>`;
+
+  let allCustomers = [];
+
+  async function load(search = "") {
+    $("#c-table").innerHTML = tableSkeletonHTML(6, 5);
+    const data = await api(`/api/customers?search=${encodeURIComponent(search)}`);
+    allCustomers = data.customers || [];
+    $("#c-table").innerHTML = tableHTML([
+      { label: "اسم العميل", key: "name", render: (r) => esc(r.name || "عميل نقدي") },
+      { label: "رقم الهاتف", key: "phone" },
+      { label: "رقم العضوية", key: "loyalty_no" },
+      { label: "رصيد النقاط", key: "points", num: true, render: (r) => `<span class="pill ok">${fmt(r.points || 0)} نقطة</span>` },
+      { label: "تاريخ التسجيل", render: (r) => esc((r.created_at || "").slice(0, 10)) },
+      { label: "إجراءات", render: (r) => `
+        <button type="button" class="btn sm" onclick="viewHistory(${r.id})">${icon("eye")} السجل</button>
+        <button type="button" class="btn sm" onclick="editCust(${r.id})" title="تعديل بيانات العميل" aria-label="تعديل بيانات العميل">${icon("edit")}</button>
+      `},
+    ], allCustomers, "لا يوجد عملاء مسجلون");
+  }
+
+  let t;
+  $("#c-search").oninput = (e) => {
+    clearTimeout(t);
+    t = setTimeout(() => load(e.target.value), 250);
+  };
+
+  window.openAddCust = () => {
+    modal("تسجيل عميل جديد", `
+      <div class="form-grid">
+        <div class="field"><label>اسم العميل *</label><input type="text" name="name" required></div>
+        <div class="field"><label>رقم الهاتف *</label><input type="tel" name="phone" required autofocus></div>
+        <div class="field"><label>رقم العضوية (اختياري)</label><input type="text" name="loyalty_no"></div>
+      </div>
+    `, async (fd) => {
+      const res = await api("/api/customers", { method: "POST", body: JSON.stringify(fd) });
+      if (res.error) throw new Error(res.error);
+      toast("تم تسجيل العميل بنجاح");
+      load($("#c-search").value);
+    });
+  };
+
+  window.editCust = (id) => {
+    const c = allCustomers.find(x => x.id === id);
+    if (!c) return;
+    modal("تعديل بيانات العميل", `
+      <div class="form-grid">
+        <div class="field"><label>اسم العميل</label><input type="text" name="name" value="${esc(c.name || "")}"></div>
+        <div class="field"><label>رقم الهاتف *</label><input type="tel" name="phone" value="${esc(c.phone || "")}" required></div>
+        <div class="field"><label>رقم العضوية</label><input type="text" name="loyalty_no" value="${esc(c.loyalty_no || "")}"></div>
+      </div>
+    `, async (fd) => {
+      const res = await api(`/api/customers/${id}`, { method: "PUT", body: JSON.stringify(fd) });
+      if (res.error) throw new Error(res.error);
+      toast("تم تعديل بيانات العميل");
+      load($("#c-search").value);
+    });
+  };
+
+  window.viewHistory = async (id) => {
+    const c = allCustomers.find(x => x.id === id);
+    const data = await api(`/api/loyalty/history/${id}`);
+    const history = data.history || [];
+    const typeLabels = { earn: "كسب", redeem_discount: "خصم نقاط", redeem_product: "استبدال منتج", adjust: "تعديل" };
+    modal(`سجل نقاط: ${c?.name || "عميل"} (${fmt(c?.points || 0)} نقطة)`, `
+      <div style="max-height:400px;overflow-y:auto">
+        ${history.length === 0 ? '<div class="empty">لا توجد عمليات</div>' : tableHTML([
+          { label: "النوع", render: (r) => `<span class="pill ${r.points > 0 ? 'ok' : 'danger'}">${typeLabels[r.type] || r.type}</span>` },
+          { label: "النقاط", num: true, render: (r) => `<b style="color:${r.points > 0 ? 'var(--success)' : 'var(--danger)'}">${r.points > 0 ? '+' : ''}${fmt(r.points)}</b>` },
+          { label: "ملاحظة", key: "note" },
+          { label: "فاتورة", key: "invoice_no" },
+          { label: "التاريخ", render: (r) => esc((r.created_at || "").slice(0, 16)) },
+        ], history)}
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px" class="no-print">
+        <button type="button" class="btn primary" onclick="printCustomerPointsStatement(${id})">${icon("print")} طباعة كشف النقاط</button>
+      </div>
+    `, null, "إغلاق");
+    const cancelBtn = document.getElementById("modal-cancel");
+    if (cancelBtn) cancelBtn.remove();
+  };
+
+  window.printCustomerPointsStatement = async (id) => {
+    const c = allCustomers.find(x => x.id === id);
+    const data = await api(`/api/loyalty/history/${id}`);
+    const history = data.history || [];
+    const typeLabels = { earn: "كسب", redeem_discount: "خصم نقاط", redeem_product: "استبدال منتج", adjust: "تعديل" };
+    const dateStr = new Date().toLocaleString("ar-EG", { dateStyle: 'short', timeStyle: 'short' });
+
+    const rowsHtml = history.map(r => `
+      <tr>
+        <td style="text-align:right; padding:4px 6px">${typeLabels[r.type] || r.type}</td>
+        <td style="text-align:center; padding:4px 6px">${r.points > 0 ? '+' : ''}${fmt(r.points)}</td>
+        <td style="text-align:center; padding:4px 6px">${esc(r.invoice_no || "-")}</td>
+        <td style="text-align:left; padding:4px 6px">${esc((r.created_at || "").slice(0, 16))}</td>
+      </tr>
+    `).join("");
+
+    const html = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 15px; direction: rtl; max-width: 650px; margin: 0 auto; color: #000; }
+        .hdr { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 12px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+        th { border-bottom: 2px solid #000; padding: 6px; text-align: right; }
+        td { border-bottom: 1px dashed #ccc; padding: 5px 6px; }
+        .summary { background: #f8f9fa; border: 1px solid #ddd; padding: 8px 12px; border-radius: 6px; margin: 10px 0; font-size: 12px; }
+        .footer { text-align: center; margin-top: 20px; font-size: 11px; color: #666; border-top: 1px dashed #ccc; padding-top: 8px; }
+      </style></head>
+      <body>
+        <div class="hdr">
+          <div><h2 style="margin:0; font-size:18px">تِــريَــاق — كشف حساب ولاء العميل</h2><p style="margin:2px 0; font-size:11px">العميل: <b>${esc(c?.name || "عميل")}</b> | هاتف: ${esc(c?.phone || "-")}</p></div>
+          <div style="font-size:11px">التاريخ: ${esc(dateStr)}</div>
+        </div>
+        <div class="summary">
+          <b>رصيد النقاط الحالي:</b> ${fmt(c?.points || 0)} نقطة &nbsp;|&nbsp; <b>رقم العضوية:</b> ${esc(c?.loyalty_no || "-")}
+        </div>
+        <table>
+          <thead><tr><th>نوع العملية</th><th style="text-align:center">النقاط</th><th style="text-align:center">رقم الفاتورة</th><th style="text-align:left">التاريخ</th></tr></thead>
+          <tbody>${rowsHtml || '<tr><td colspan="4" style="text-align:center">لا توجد عمليات</td></tr>'}</tbody>
+        </table>
+        <div class="footer">تِــريَــاق v2.0 — نظام إدارة الصيدليات</div>
+      </body></html>`;
+
+    printHtml(html);
+  };
+
+  window.exportCustomers = () => {
+    if (!allCustomers.length) {
+      toast("لا توجد بيانات عملاء للتصدير");
+      return;
+    }
+    const headers = ["معرف العميل", "اسم العميل", "رقم الهاتف", "رقم العضوية", "نقاط الولاء", "تاريخ التسجيل"];
+    const rows = allCustomers.map(c => [
+      c.id,
+      c.name || "عميل نقدي",
+      c.phone || "",
+      c.loyalty_no || "",
+      c.points || 0,
+      (c.created_at || "").slice(0, 10)
+    ]);
+    const escVal = (v) => {
+      v = String(v ?? "");
+      return (v.includes(",") || v.includes('"') || v.includes("\n")) ? `"${v.replace(/"/g, '""')}"` : v;
+    };
+    let csv = "﻿" + headers.map(escVal).join(",") + "\n";
+    rows.forEach(r => { csv += r.map(escVal).join(",") + "\n"; });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `customers_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast("تم تصدير قائمة العملاء بنجاح");
+  };
+
+  load();
+});
+</script>
+</body>
+</html>
+
