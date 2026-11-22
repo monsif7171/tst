@@ -1,0 +1,27 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Standalone EXEs & large release packages (Never push large binaries to GitHub)
+*.exe
+*.zip
+*.tar.gz
+PharmacySystem.exe
+
+# Database & runtime files
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Environment variables & secrets (Security)
+.env
+.env.local
+
+# Operating System Files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
